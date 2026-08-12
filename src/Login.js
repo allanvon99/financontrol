@@ -1,29 +1,73 @@
 import { useState } from "react";
 import { auth, db } from "./firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+import { POLITICA_PRIVACIDADE, TERMOS_USO, VERSAO_DOCS } from "./legal";
+
+const DARK = {
+  bg:"#0d1117", card:"#161b22", border:"#21262d", surface:"#1c2128",
+  text:"#c9d1d9", textSub:"#8b949e", primary:"#2188c9", primaryLight:"#58a6ff",
+  green:"#3fb950", red:"#f85149",
+};
+const LIGHT = {
+  bg:"#f6f8fa", card:"#ffffff", border:"#d0d7de", surface:"#f6f8fa",
+  text:"#1f2328", textSub:"#57606a", primary:"#0969da", primaryLight:"#0969da",
+  green:"#1a7f37", red:"#d1242f",
+};
+
+const inp = (C, ov={}) => ({
+  width:"100%", padding:"13px 14px", borderRadius:10,
+  border:`1px solid ${C.border}`, background:C.surface, color:C.text,
+  fontSize:"0.9rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box", ...ov
+});
+
+const btnPri = (ov={}) => ({
+  width:"100%", padding:"14px", borderRadius:12, border:"none",
+  background:"linear-gradient(135deg,#1d6fa4,#2188c9)", color:"#fff",
+  fontWeight:700, fontSize:"0.92rem", cursor:"pointer", fontFamily:"inherit", ...ov
+});
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [modo, setModo] = useState("login");
+  const [dark] = useState(() => {
+    try {
+      const match = document.cookie.match(/finan_tema=([^;]+)/);
+      return match ? match[1] === "true" : true;
+    } catch { return true; }
+  });
+  const C = dark ? DARK : LIGHT;
+
+  const [modo, setModo] = useState("cadastro");
+  const [aceito, setAceito] = useState(false);
+  const [form, setForm] = useState({ nome:"", sobrenome:"", email:"", senha:"", confirmar:"" });
   const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
   const [loading, setLoading] = useState(false);
+  const [docLegal, setDocLegal] = useState(null);
+
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const senhasOk = !form.confirmar || form.senha === form.confirmar;
+  const podeCadastrar = aceito && form.nome.trim() && form.sobrenome.trim() && form.email && form.senha && form.senha===form.confirmar;
 
   const handle = async () => {
-    setErro(""); setLoading(true);
+    setErro(""); setAviso("");
+    if (modo === "cadastro" && !podeCadastrar) return;
+    setLoading(true);
     try {
       if (modo === "login") {
-        await signInWithEmailAndPassword(auth, email, senha);
+        await signInWithEmailAndPassword(auth, form.email, form.senha);
       } else {
-        const cred = await createUserWithEmailAndPassword(auth, email, senha);
+        const cred = await createUserWithEmailAndPassword(auth, form.email, form.senha);
         const agora = new Date();
         const trialFim = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
         await setDoc(doc(db, "usuarios", cred.user.uid), {
+          nome: form.nome.trim(),
+          sobrenome: form.sobrenome.trim(),
           criadoEm: agora.toISOString(),
           trialFim: trialFim.toISOString(),
           onboardingConcluido: false,
           plano: "free",
+          termosAceitos: { versao: VERSAO_DOCS, aceitoEm: agora.toISOString() },
         }, { merge: true });
       }
     } catch (e) {
@@ -34,36 +78,127 @@ export default function Login() {
     setLoading(false);
   };
 
-  const inp = { width:"100%", padding:"12px 14px", borderRadius:8, border:"1px solid #334155", background:"#1e293b", color:"#e2e8f0", fontSize:"0.95rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
+  const handleEsqueciSenha = async () => {
+    setErro(""); setAviso("");
+    if (!form.email) { setErro("Digite seu email primeiro"); return; }
+    try {
+      await sendPasswordResetEmail(auth, form.email);
+      setAviso("Enviamos um link de redefinição para seu email");
+    } catch (e) {
+      setErro(e.code === "auth/user-not-found" ? "Não encontramos essa conta" : e.message);
+    }
+  };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0e1a", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"sans-serif" }}>
-      <div style={{ background:"#111827", borderRadius:16, padding:32, width:"100%", maxWidth:380, border:"1px solid #1e293b" }}>
-        <h1 style={{ textAlign:"center", fontSize:"1.8rem", fontWeight:800, background:"linear-gradient(90deg,#38bdf8,#818cf8)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", marginBottom:8 }}>Von Finance</h1>
-        <p style={{ textAlign:"center", color:"#64748b", fontSize:"0.85rem", marginBottom:28 }}>Controle financeiro pessoal</p>
+    <div style={{ minHeight:"100vh", background:C.bg, padding:"32px 20px 40px", fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      {docLegal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={()=>setDocLegal(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:"22px 22px 0 0", padding:"18px 20px 30px", width:"100%", maxWidth:520, maxHeight:"88vh", overflowY:"auto" }}>
+            <div style={{ width:38, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
+            <h3 style={{ fontSize:"1rem", fontWeight:800, color:C.text, margin:"0 0 14px" }}>
+              {docLegal==="termos" ? "Termos de Uso" : "Política de Privacidade"}
+            </h3>
+            <div style={{ fontSize:"0.8rem", color:C.textSub, lineHeight:1.65 }}>
+              {(docLegal==="termos" ? TERMOS_USO : POLITICA_PRIVACIDADE).map((s,i)=>(
+                <div key={i} style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:"0.84rem", fontWeight:700, color:C.text, marginBottom:6 }}>{i+1}. {s.t}</div>
+                  {s.p.map((par,j)=>(<p key={j} style={{ margin:"0 0 7px", lineHeight:1.6 }}>{par}</p>))}
+                </div>
+              ))}
+            </div>
+            <button onClick={()=>setDocLegal(null)} style={btnPri({ marginTop:16 })}>Fechar</button>
+          </div>
+        </div>
+      )}
 
-        <div style={{ display:"flex", marginBottom:20, background:"#1e293b", borderRadius:8, padding:4 }}>
-          {["login","cadastro"].map(m => (
-            <button key={m} onClick={() => setModo(m)} style={{ flex:1, padding:"8px", border:"none", borderRadius:6, cursor:"pointer", fontWeight:600, fontSize:"0.85rem", fontFamily:"inherit", background: modo===m ? "linear-gradient(135deg,#38bdf8,#818cf8)" : "transparent", color: modo===m ? "#fff" : "#94a3b8", transition:"all 0.2s" }}>
-              {m === "login" ? "Entrar" : "Cadastrar"}
-            </button>
+      <div style={{ maxWidth:400, margin:"0 auto" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:26 }}>
+          <div style={{ width:42, height:42, borderRadius:12, background:"linear-gradient(135deg,#1d6fa4,#2188c9)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem" }}>💳</div>
+          <span style={{ fontSize:"1.15rem", fontWeight:800, color:C.text }}>Von Finance</span>
+        </div>
+
+        <h1 style={{ fontSize:"1.5rem", fontWeight:800, color:C.text, margin:"0 0 8px", lineHeight:1.3 }}>
+          Tenha o controle real<br/>do seu dinheiro
+        </h1>
+        <p style={{ color:C.textSub, fontSize:"0.85rem", margin:"0 0 20px", lineHeight:1.5 }}>
+          Veja quanto sobra de verdade nos próximos meses, considerando todos os seus gastos.
+        </p>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:22 }}>
+          {[
+            { i:"📊", t:"Projeção mês a mês" },
+            { i:"🧾", t:"Todas as parcelas organizadas" },
+            { i:"💸", t:"Simulador de amortização" },
+          ].map(b=>(
+            <div key={b.t} style={{ display:"flex", alignItems:"center", gap:10, fontSize:"0.82rem", color:C.textSub }}>
+              <span style={{ fontSize:"1rem" }}>{b.i}</span>
+              <span>{b.t}</span>
+              <span style={{ marginLeft:"auto", color:C.green, fontSize:"0.8rem" }}>✓</span>
+            </div>
           ))}
         </div>
 
-        {modo === "cadastro" && (
-          <p style={{ textAlign:"center", color:"#38bdf8", fontSize:"0.78rem", marginBottom:16, marginTop:-8 }}>
-            ✨ 30 dias grátis do plano Pro ao criar sua conta
-          </p>
-        )}
+        <div style={{ background:C.card, borderRadius:16, padding:20, border:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {modo==="cadastro" && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                <input placeholder="Nome" value={form.nome} onChange={e=>set("nome",e.target.value)} style={inp(C)}/>
+                <input placeholder="Sobrenome" value={form.sobrenome} onChange={e=>set("sobrenome",e.target.value)} style={inp(C)}/>
+              </div>
+            )}
 
-        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-          <input placeholder="Email" type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inp}/>
-          <input placeholder="Senha" type="password" value={senha} onChange={e=>setSenha(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()} style={inp}/>
-          {erro && <p style={{ color:"#f87171", fontSize:"0.82rem", margin:0 }}>{erro}</p>}
-          <button onClick={handle} disabled={loading} style={{ padding:"12px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#38bdf8,#818cf8)", color:"#fff", fontWeight:700, fontSize:"0.95rem", cursor:"pointer", fontFamily:"inherit", opacity: loading ? 0.7 : 1 }}>
-            {loading ? "Aguarde..." : modo === "login" ? "Entrar" : "Criar conta"}
-          </button>
+            <input placeholder="seu@email.com" type="email" value={form.email} onChange={e=>set("email",e.target.value)} style={inp(C)}/>
+            <input placeholder={modo==="cadastro"?"Crie uma senha":"Senha"} type="password" value={form.senha}
+              onChange={e=>set("senha",e.target.value)} onKeyDown={e=>e.key==="Enter"&&modo==="login"&&handle()} style={inp(C)}/>
+
+            {modo==="cadastro" && (
+              <>
+                <input placeholder="Confirmar senha" type="password" value={form.confirmar} onChange={e=>set("confirmar",e.target.value)}
+                  style={inp(C, senhasOk ? {} : { border:`1px solid ${C.red}` })}/>
+                {!senhasOk && <span style={{ fontSize:"0.7rem", color:C.red }}>As senhas não coincidem</span>}
+              </>
+            )}
+
+            {modo==="login" && (
+              <button onClick={handleEsqueciSenha} style={{ background:"none", border:"none", color:C.primaryLight, fontSize:"0.75rem", cursor:"pointer", textAlign:"right", fontFamily:"inherit", padding:0 }}>
+                Esqueci minha senha
+              </button>
+            )}
+
+            {modo==="cadastro" && (
+              <label style={{ display:"flex", alignItems:"flex-start", gap:8, cursor:"pointer", padding:"2px 0" }}>
+                <input type="checkbox" checked={aceito} onChange={e=>setAceito(e.target.checked)}
+                  style={{ marginTop:2, accentColor:C.primary, width:15, height:15, flexShrink:0 }}/>
+                <span style={{ fontSize:"0.7rem", color:C.textSub, lineHeight:1.5 }}>
+                  Aceito os{" "}
+                  <span onClick={(e)=>{ e.preventDefault(); setDocLegal("termos"); }} style={{ color:C.primaryLight, textDecoration:"underline", cursor:"pointer" }}>Termos de Uso</span>
+                  {" "}e a{" "}
+                  <span onClick={(e)=>{ e.preventDefault(); setDocLegal("privacidade"); }} style={{ color:C.primaryLight, textDecoration:"underline", cursor:"pointer" }}>Política de Privacidade</span>
+                </span>
+              </label>
+            )}
+
+            {erro && <p style={{ color:C.red, fontSize:"0.78rem", margin:0 }}>{erro}</p>}
+            {aviso && <p style={{ color:C.green, fontSize:"0.78rem", margin:0 }}>{aviso}</p>}
+
+            <button onClick={handle} disabled={loading || (modo==="cadastro" && !podeCadastrar)}
+              style={btnPri({ opacity: loading || (modo==="cadastro" && !podeCadastrar) ? 0.45 : 1 })}>
+              {loading ? "Aguarde..." : modo==="cadastro" ? "Começar grátis →" : "Entrar"}
+            </button>
+
+            <p style={{ textAlign:"center", fontSize:"0.68rem", color:C.textSub, margin:"4px 0 0" }}>
+              30 dias de Pro grátis · Sem cartão de crédito
+            </p>
+          </div>
         </div>
+
+        <p style={{ textAlign:"center", fontSize:"0.8rem", color:C.textSub, marginTop:18 }}>
+          {modo==="cadastro" ? "Já tem conta? " : "Não tem conta? "}
+          <button onClick={()=>{ setModo(modo==="cadastro"?"login":"cadastro"); setErro(""); setAviso(""); }}
+            style={{ background:"none", border:"none", color:C.primaryLight, fontWeight:700, cursor:"pointer", fontFamily:"inherit", fontSize:"0.8rem", padding:0 }}>
+            {modo==="cadastro" ? "Entrar" : "Criar conta"}
+          </button>
+        </p>
       </div>
     </div>
   );

@@ -13,10 +13,10 @@ const CORES_DARK = {
 
 const fmt = (v) => Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const getMesAtual = () => { const n = new Date(); return { mes:n.getMonth(), ano:n.getFullYear() }; };
-
 const gerarMeses = () => {
-  const { mes, ano } = getMesAtual();
+  const now = new Date();
+  const mes = now.getMonth();
+  const ano = now.getFullYear();
   const nomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
   return Array.from({ length:18 }, (_,i) => {
     const m = (mes+i)%12;
@@ -27,12 +27,22 @@ const gerarMeses = () => {
 
 const MESES = gerarMeses();
 
+const pertenceAoMes = (e, m, idx) => {
+  if (e.mesReal !== undefined && e.anoReal !== undefined) return e.mesReal === m.mes && e.anoReal === m.ano;
+  const off = e.offset ?? e.mes ?? 0;
+  return off === idx;
+};
+
 export default function Receita({ salario, setSalario, extrasReceita, setExtrasReceita, dark=true }) {
   const C = dark ? CORES_DARK : CORES_LIGHT;
   const [editandoSalario, setEditandoSalario] = useState(false);
   const [salarioTemp, setSalarioTemp] = useState(salario);
-  const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0 });
-  const [editandoExtra, setEditandoExtra] = useState(null); // { id, nome, valor, mes }
+  const [mesSel, setMesSel] = useState(0);
+  const [showForm, setShowForm] = useState(false);
+  const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"" });
+  const [editandoExtra, setEditandoExtra] = useState(null);
+
+  const mesAtual = MESES[mesSel];
 
   const inp = {
     width:"100%", padding:"10px 12px", borderRadius:8,
@@ -41,14 +51,13 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
     outline:"none", boxSizing:"border-box"
   };
 
-  const totalMes = (idx) => {
-    const ext = extrasReceita.filter(e=>e.mes===idx).reduce((s,e)=>s+Number(e.valor),0);
-    return salario + ext;
-  };
+  const extrasDoMes = extrasReceita.filter(e => pertenceAoMes(e, mesAtual, mesSel));
+  const totalExtrasDoMes = extrasDoMes.reduce((s,e)=>s+Number(e.valor||0),0);
+  const totalMes = salario + totalExtrasDoMes;
 
   const salvarExtra = () => {
     if (!editandoExtra?.nome||!editandoExtra?.valor) return;
-    setExtrasReceita(prev => prev.map(e => e.id===editandoExtra.id ? { ...editandoExtra, valor:parseFloat(editandoExtra.valor) } : e));
+    setExtrasReceita(prev => prev.map(e => e.id===editandoExtra.id ? { ...e, nome:editandoExtra.nome, valor:parseFloat(editandoExtra.valor) } : e));
     setEditandoExtra(null);
   };
 
@@ -57,7 +66,6 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
       <h2 style={{ fontSize:"0.95rem", fontWeight:700, marginBottom:4, color:C.text }}>💰 Receita</h2>
       <p style={{ fontSize:"0.75rem", color:C.textSub, marginBottom:16 }}>Salário fixo + entradas extras por mês</p>
 
-      {/* Card salário */}
       <div style={{ background:C.card, borderRadius:12, padding:16, border:`1px solid ${C.border}`, marginBottom:12 }}>
         <div style={{ fontSize:"0.68rem", color:C.green, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>💼 Salário Fixo Mensal</div>
         {editandoSalario ? (
@@ -78,77 +86,75 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
         <p style={{ fontSize:"0.7rem", color:C.textSub, margin:"8px 0 0" }}>Aplicado automaticamente em todos os meses</p>
       </div>
 
-      {/* Adicionar entrada extra */}
-      <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.border}`, marginBottom:14 }}>
-        <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>➕ Entrada Extra</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          <input placeholder="Descrição (ex: Freelance, 13º...)" value={novoExtra.nome} onChange={e=>setNovoExtra(x=>({...x,nome:e.target.value}))} style={inp}/>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-            <input type="number" placeholder="Valor (R$)" value={novoExtra.valor} onChange={e=>setNovoExtra(x=>({...x,valor:e.target.value}))} style={inp}/>
-            <select value={novoExtra.mes} onChange={e=>setNovoExtra(x=>({...x,mes:parseInt(e.target.value)}))} style={inp}>
-              {MESES.map((m,i)=><option key={i} value={i}>{m.label}</option>)}
-            </select>
-          </div>
-          <button onClick={()=>{
-            if (!novoExtra.nome||!novoExtra.valor) return;
-            setExtrasReceita(e=>[...e,{...novoExtra,id:Date.now(),valor:parseFloat(novoExtra.valor)}]);
-            setNovoExtra({nome:"",valor:"",mes:0});
-          }} style={{ padding:"10px", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-            Adicionar entrada
-          </button>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
+        <button onClick={()=>setMesSel(m=>Math.max(0,m-1))} disabled={mesSel===0}
+          style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===0?C.border:C.textSub, width:32, height:32, cursor:mesSel===0?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+        <div style={{ flex:1, textAlign:"center" }}>
+          <div style={{ fontSize:"0.92rem", fontWeight:800, color:C.text }}>{mesAtual.label}</div>
+          <div style={{ fontSize:"0.65rem", color:C.textSub }}>{fmt(totalMes)} total · {extrasDoMes.length} extra(s)</div>
         </div>
+        <button onClick={()=>setMesSel(m=>Math.min(MESES.length-1,m+1))} disabled={mesSel===MESES.length-1}
+          style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===MESES.length-1?C.border:C.textSub, width:32, height:32, cursor:mesSel===MESES.length-1?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
       </div>
 
-      {/* Resumo por mês — começa do mês atual */}
-      <div style={{ fontSize:"0.68rem", color:C.textSub, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Receita por mês</div>
-      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-        {MESES.map((m,i) => {
-          const extMes = extrasReceita.filter(e=>e.mes===i);
-          const total = totalMes(i);
-          return (
-            <div key={i} style={{ background:C.card, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-              <div style={{ padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span style={{ fontSize:"0.82rem", fontWeight:600, color:C.text }}>{m.label}</span>
-                <span style={{ fontSize:"0.95rem", fontWeight:800, color:C.green }}>{fmt(total)}</span>
-              </div>
-              {extMes.length>0 && (
-                <div style={{ padding:"0 14px 10px", borderTop:`1px solid ${C.border}` }}>
-                  <div style={{ fontSize:"0.65rem", color:C.textSub, margin:"8px 0 6px" }}>Entradas extras:</div>
-                  {extMes.map(e=>(
-                    <div key={e.id}>
-                      {editandoExtra?.id===e.id ? (
-                        /* Modo edição inline */
-                        <div style={{ display:"flex", flexDirection:"column", gap:6, padding:"8px", background:C.surface, borderRadius:8, marginBottom:4, border:`1px solid ${C.primary}55` }}>
-                          <input value={editandoExtra.nome} onChange={ev=>setEditandoExtra(x=>({...x,nome:ev.target.value}))} style={inp} placeholder="Descrição"/>
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-                            <input type="number" value={editandoExtra.valor} onChange={ev=>setEditandoExtra(x=>({...x,valor:ev.target.value}))} style={inp} placeholder="Valor"/>
-                            <select value={editandoExtra.mes} onChange={ev=>setEditandoExtra(x=>({...x,mes:parseInt(ev.target.value)}))} style={inp}>
-                              {MESES.map((mm,ii)=><option key={ii} value={ii}>{mm.label}</option>)}
-                            </select>
-                          </div>
-                          <div style={{ display:"flex", gap:6 }}>
-                            <button onClick={salvarExtra} style={{ flex:2, padding:"8px", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Salvar</button>
-                            <button onClick={()=>setEditandoExtra(null)} style={{ flex:1, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, cursor:"pointer", fontFamily:"inherit" }}>Cancelar</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                          <span style={{ fontSize:"0.78rem", color:C.textSub }}>+ {e.nome}</span>
-                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <span style={{ fontSize:"0.78rem", color:C.green, fontWeight:600 }}>{fmt(e.valor)}</span>
-                            <button onClick={()=>setEditandoExtra({...e})} style={{ background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:"0.8rem", padding:"2px" }}>✏️</button>
-                            <button onClick={()=>setExtrasReceita(x=>x.filter(i=>i.id!==e.id))} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:"0.9rem", padding:"2px" }}>✕</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+      <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.border}`, marginBottom:14 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:showForm?10:0 }}>
+          <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700 }}>➕ Entrada Extra em {mesAtual.label}</div>
+          <button onClick={()=>setShowForm(!showForm)} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.primary, padding:"5px 10px", fontSize:"0.72rem", cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>
+            {showForm?"✕ Fechar":"+ Adicionar"}
+          </button>
+        </div>
+        {showForm && (
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            <input placeholder="Descrição (ex: Freelance, 13º...)" value={novoExtra.nome} onChange={e=>setNovoExtra(x=>({...x,nome:e.target.value}))} style={inp}/>
+            <input type="number" placeholder="Valor (R$)" value={novoExtra.valor} onChange={e=>setNovoExtra(x=>({...x,valor:e.target.value}))} style={inp}/>
+            <button onClick={()=>{
+              if (!novoExtra.nome||!novoExtra.valor) return;
+              setExtrasReceita(e=>[...e,{
+                id:Date.now(), nome:novoExtra.nome, valor:parseFloat(novoExtra.valor),
+                mesReal:mesAtual.mes, anoReal:mesAtual.ano
+              }]);
+              setNovoExtra({nome:"",valor:""});
+              setShowForm(false);
+            }} style={{ padding:"10px", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              Adicionar entrada
+            </button>
+          </div>
+        )}
+      </div>
+
+      {extrasDoMes.length === 0 ? (
+        <div style={{ textAlign:"center", color:C.textSub, padding:"30px 0" }}>
+          <p style={{ fontSize:"1.6rem", margin:"0 0 6px" }}>💰</p>
+          <p style={{ fontSize:"0.82rem" }}>Nenhuma entrada extra em {mesAtual.label}</p>
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {extrasDoMes.map(e=>(
+            <div key={e.id} style={{ background:C.card, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+              {editandoExtra?.id===e.id ? (
+                <div style={{ padding:"10px 12px", display:"flex", flexDirection:"column", gap:6 }}>
+                  <input value={editandoExtra.nome} onChange={ev=>setEditandoExtra(x=>({...x,nome:ev.target.value}))} style={inp} placeholder="Descrição"/>
+                  <input type="number" value={editandoExtra.valor} onChange={ev=>setEditandoExtra(x=>({...x,valor:ev.target.value}))} style={inp} placeholder="Valor"/>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <button onClick={salvarExtra} style={{ flex:2, padding:"8px", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>✓ Salvar</button>
+                    <button onClick={()=>setEditandoExtra(null)} style={{ flex:1, padding:"8px", borderRadius:8, border:`1px solid ${C.border}`, background:"transparent", color:C.textSub, cursor:"pointer", fontFamily:"inherit" }}>Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:"0.82rem", color:C.text }}>{e.nome}</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:"0.85rem", color:C.green, fontWeight:700 }}>{fmt(e.valor)}</span>
+                    <button onClick={()=>setEditandoExtra({...e})} style={{ background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:"0.85rem", padding:"2px" }}>✏️</button>
+                    <button onClick={()=>setExtrasReceita(x=>x.filter(i=>i.id!==e.id))} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:"0.95rem", padding:"2px" }}>✕</button>
+                  </div>
                 </div>
               )}
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

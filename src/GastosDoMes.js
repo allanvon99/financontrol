@@ -19,7 +19,9 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
 
   const mesAtual = MESES[mesSel];
   const gastosMes = extras
-    .filter(e => e.mes === mesSel)
+    .filter(e => e.mesReal !== undefined && e.anoReal !== undefined
+      ? (e.mesReal === mesAtual.mes && e.anoReal === mesAtual.ano)
+      : e.mes === mesSel)
     .sort((a,b) => {
       if (a.data && b.data) return new Date(a.data) - new Date(b.data);
       if (a.data) return -1;
@@ -82,8 +84,8 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
             </div>
             <button onClick={()=>{
               if(!novoExtra.nome||!novoExtra.valor) return;
-              setExtras(e=>[...e,{ ...novoExtra, id:Date.now(), valor:parseFloat(novoExtra.valor), mes:mesSel }]);
-              setNovoExtra({ nome:"", valor:"", mes:mesSel, cartao:"", data:"" });
+              setExtras(e=>[...e,{ ...novoExtra, id:Date.now(), valor:parseFloat(novoExtra.valor), mesReal:mesAtual.mes, anoReal:mesAtual.ano }]);
+              setNovoExtra({ nome:"", valor:"", cartao:"", data:"" });
               setShowForm(false);
             }} style={{ ...btnPri, padding:"10px" }}>Adicionar gasto</button>
           </div>

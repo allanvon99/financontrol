@@ -7,6 +7,15 @@ import { ModalPerfil, TelaEditar } from "./Profile";
 import Receita from "./Receita";
 import ModalNovoCartao from "./ModalNovoCartao";
 import Cartoes from "./Cartoes";
+import Cadastros from "./Cadastros";
+import Onboarding from "./Onboarding";
+import GuiaTela from "./GuiaTela";
+import Notificacoes, { SinoIcon, gerarNotificacoes } from "./Notificacoes";
+import GerenciarConta from "./GerenciarConta";
+import RaioXMes from "./RaioXMes";
+import Feedback from "./Feedback";
+import { identificarUsuario, limparUsuario, registrarTela, registrarEvento, registrarErro } from "./monitoramento";
+import { carregarPlanos, PLANOS_PADRAO, podeAdicionar, fmtPreco } from "./planos";
 import GastosDoMes from "./GastosDoMes";
 
 const CORES = {
@@ -82,43 +91,126 @@ function Donut({ pct, cor, C, size=80, stroke=8 }) {
   );
 }
 
-// Cálculo de amortização sem IA
+// Cálculo de amortização — prioriza QUITAR dívidas inteiras
 function calcularAmortizacao(parcelas, valorDisponivel, tipo) {
-  if (!parcelas || parcelas.length === 0) return null;
+  if (!parcelas?.length || !valorDisponivel) return null;
 
-  const sorted = [...parcelas].sort((a, b) => {
-    if (tipo === "prazo") {
-      // Prioriza quem tem mais parcelas restantes (vai durar mais)
-      return Number(b.parcelasRestantes) - Number(a.parcelasRestantes);
+  const lista = parcelas.map(p => ({
+    id: p.id, nome: p.nome, grupo: p.grupo,
+    valorParcela: Number(p.valor),
+    restantes: Number(p.parcelasRestantes ?? p.parcelas),
+    totalOriginal: Number(p.parcelasOriginal || p.parcelas),
+  })).filter(p => p.restantes > 0 && p.valorParcela > 0)
+    .map(p => ({ ...p, custoQuitar: p.valorParcela * p.restantes }));
+
+  // ── ETAPA 1: melhor combinação de dívidas que dá pra QUITAR inteiras ──
+  const quitaveis = lista.filter(p => p.custoQuitar <= valorDisponivel);
+  let melhorCombo = [];
+
+  if (quitaveis.length) {
+    const pontuar = (combo) => {
+      if (tipo === "mensal") {
+        // libera mais dinheiro por mês
+        return combo.reduce((s,p)=>s+p.valorParcela,0);
+      }
+      // prazo: elimina as dívidas mais longas
+      return combo.reduce((s,p)=>s+p.restantes,0);
+    };
+
+    // Busca exaustiva se poucos itens, guloso se muitos
+    if (quitaveis.length <= 14) {
+      const n = quitaveis.length;
+      for (let mask = 1; mask < (1 << n); mask++) {
+        const combo = [];
+        let custo = 0;
+        for (let i = 0; i < n; i++) {
+          if (mask & (1 << i)) { combo.push(quitaveis[i]); custo += quitaveis[i].custoQuitar; }
+        }
+        if (custo > valorDisponivel) continue;
+        if (pontuar(combo) > pontuar(melhorCombo)) melhorCombo = combo;
+      }
     } else {
-      // Prioriza quem tem maior valor mensal (libera mais por mês)
-      return Number(b.valor) - Number(a.valor);
+      const ordenado = [...quitaveis].sort((a,b)=>{
+        const ea = (tipo === "mensal" ? a.valorParcela : a.restantes) / a.custoQuitar;
+        const eb = (tipo === "mensal" ? b.valorParcela : b.restantes) / b.custoQuitar;
+        return eb - ea;
+      });
+      let saldoG = valorDisponivel;
+      for (const p of ordenado) {
+        if (p.custoQuitar <= saldoG) { melhorCombo.push(p); saldoG -= p.custoQuitar; }
+      }
     }
+  }
+
+  let saldo = valorDisponivel;
+  const acoes = [];
+  const idsQuitados = new Set(melhorCombo.map(p=>p.id));
+
+  // Ordena as quitações pelo objetivo
+  const combosOrdenados = [...melhorCombo].sort((a,b)=>
+    tipo === "mensal" ? b.valorParcela - a.valorParcela : b.restantes - a.restantes
+  );
+
+  for (const p of combosOrdenados) {
+    saldo -= p.custoQuitar;
+    acoes.push({
+      ...p, abatidas: p.restantes, gasto: p.custoQuitar,
+      sobramDepois: 0, quitouTudo: true,
+      liberaPorMes: p.valorParcela, mesesAntecipados: p.restantes,
+    });
+  }
+
+  // ── ETAPA 2: com o troco, adianta parcelas das demais ──
+  const restantesLista = lista
+    .filter(p => !idsQuitados.has(p.id))
+    .sort((a,b)=> tipo === "prazo"
+      ? b.restantes - a.restantes || b.valorParcela - a.valorParcela
+      : b.valorParcela - a.valorParcela || b.restantes - a.restantes
+    );
+
+  for (const p of restantesLista) {
+    if (saldo < p.valorParcela) continue;
+    const abatidas = Math.min(Math.floor(saldo / p.valorParcela), p.restantes);
+    if (abatidas <= 0) continue;
+    const gasto = abatidas * p.valorParcela;
+    saldo -= gasto;
+    acoes.push({
+      ...p, abatidas, gasto,
+      sobramDepois: p.restantes - abatidas,
+      quitouTudo: abatidas >= p.restantes,
+      liberaPorMes: abatidas >= p.restantes ? p.valorParcela : 0,
+      mesesAntecipados: abatidas,
+    });
+    if (saldo <= 0) break;
+  }
+
+  if (!acoes.length) {
+    const menor = lista.length ? Math.min(...lista.map(p=>p.valorParcela)) : 0;
+    return { semAcao: true, valorDisponivel, sobra: valorDisponivel, menorParcela: menor, tipo };
+  }
+
+  const totalUsado = acoes.reduce((s,a)=>s+a.gasto,0);
+  const totalParcelasAbatidas = acoes.reduce((s,a)=>s+a.abatidas,0);
+  const quitadas = acoes.filter(a=>a.quitouTudo);
+  const liberaPorMes = quitadas.reduce((s,a)=>s+a.valorParcela,0);
+  const dividaAntes = lista.reduce((s,p)=>s+p.custoQuitar,0);
+  const maiorPrazoAntes = Math.max(...lista.map(p=>p.restantes), 0);
+  const restantesDepois = lista.map(p=>{
+    const a = acoes.find(x=>x.id===p.id);
+    return a ? a.sobramDepois : p.restantes;
   });
 
-  const alvo = sorted[0];
-  if (!alvo) return null;
-
-  const valorMensal = Number(alvo.valor);
-  const restantes = Number(alvo.parcelasRestantes);
-  const totalDevido = valorMensal * restantes;
-  const valorAmort = Math.min(valorDisponivel, totalDevido);
-  const parcelasEliminadas = Math.floor(valorAmort / valorMensal);
-  const novoTotal = Math.max(0, totalDevido - valorAmort);
-  const novasParcelas = Math.ceil(novoTotal / valorMensal);
-  const economiaMensal = tipo === "mensal" ? (valorMensal - (novoTotal > 0 ? novoTotal / novasParcelas : 0)) : 0;
-
   return {
-    parcela: alvo,
-    valorAmort,
-    parcelasEliminadas,
-    restantesAntes: restantes,
-    restantesDepois: novasParcelas,
-    totalDevido,
-    novoTotal,
-    economiaMensal: tipo === "mensal" ? (valorAmort / restantes) : 0,
-    liberaPorMes: valorMensal,
-    mesesAntecipados: tipo === "prazo" ? parcelasEliminadas : 0,
+    tipo, acoes, valorDisponivel, totalUsado,
+    sobra: valorDisponivel - totalUsado,
+    totalParcelasAbatidas,
+    quitadasCount: quitadas.length,
+    liberaPorMes,
+    dividaAntes,
+    dividaDepois: dividaAntes - totalUsado,
+    maiorPrazoAntes,
+    maiorPrazoDepois: Math.max(...restantesDepois, 0),
+    mesesEconomizados: maiorPrazoAntes - Math.max(...restantesDepois, 0),
   };
 }
 
@@ -137,13 +229,61 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
   const [showNovaParcela, setShowNovaParcela] = useState(false);
-  const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valor:"", parcelas:"" });
+  const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valor:"", parcelas:"", dataInicio:"" });
   const [novoFixo, setNovoFixo] = useState({ nome:"", valor:"", cartao:"" });
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0, cartao:"" });
   const [expandidosProj, setExpandidosProj] = useState({});
   const [expandidosCartMes, setExpandidosCartMes] = useState({});
   const [expandidosCart, setExpandidosCart] = useState({});
   const [expandidosParcela, setExpandidosParcela] = useState({});
+  const [mesParcelas, setMesParcelas] = useState(0); // índice em MESES
+  const [confirmRemover, setConfirmRemover] = useState(null);
+  const [categorias, setCategorias] = useState([
+    { id:"alimentacao", nome:"Alimentação", emoji:"🍔", cor:"#e06c1a" },
+    { id:"transporte", nome:"Transporte", emoji:"🚗", cor:"#2188c9" },
+    { id:"saude", nome:"Saúde", emoji:"🏥", cor:"#3fb950" },
+    { id:"educacao", nome:"Educação", emoji:"📚", cor:"#a78bfa" },
+    { id:"lazer", nome:"Lazer", emoji:"🎮", cor:"#f472b6" },
+    { id:"moradia", nome:"Moradia", emoji:"🏠", cor:"#d29922" },
+    { id:"vestuario", nome:"Vestuário", emoji:"👕", cor:"#58a6ff" },
+    { id:"assinaturas", nome:"Assinaturas", emoji:"📱", cor:"#fb923c" },
+    { id:"viagem", nome:"Viagem", emoji:"✈️", cor:"#34d399" },
+    { id:"outros", nome:"Outros", emoji:"📦", cor:"#8b949e" },
+  ]);
+  const [saudeConfig, setSaudeConfig] = useState({ saudavel:60, atencao:80, ativos:true });
+  const [onboardingConcluido, setOnboardingConcluido] = useState(true);
+  const [nomeUsuario, setNomeUsuario] = useState("");
+  const [guiasVistos, setGuiasVistos] = useState({});
+  const [guiaAtivo, setGuiaAtivo] = useState(null);
+  const [telaEspecial, setTelaEspecial] = useState(null); // "notificacoes" | "conta"
+  const [menuPerfil, setMenuPerfil] = useState(false);
+  const [abaConta, setAbaConta] = useState("dados");
+  const [raioXMes, setRaioXMes] = useState(null);
+  const [vvOffset, setVvOffset] = useState(0);
+  const [mostrarFeedback, setMostrarFeedback] = useState(false);
+
+  useEffect(()=>{
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onChange = () => {
+      const off = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      setVvOffset(off);
+    };
+    vv.addEventListener("resize", onChange);
+    vv.addEventListener("scroll", onChange);
+    onChange();
+    return ()=>{ vv.removeEventListener("resize", onChange); vv.removeEventListener("scroll", onChange); };
+  },[]);
+  const [notifLidas, setNotifLidas] = useState({});
+  const [sobrenomeUsuario, setSobrenomeUsuario] = useState("");
+  const [planosConfig, setPlanosConfig] = useState(PLANOS_PADRAO);
+  const [trialFim, setTrialFim] = useState(null);
+  const [planoDb, setPlanoDb] = useState("free");
+  const [showUpgrade, setShowUpgrade] = useState(null);
+  const [abaContaInicial, setAbaContaInicial] = useState(null); // "cartoes" | "parcelas" | "fixos" | null
+
+  useEffect(()=>{ carregarPlanos().then(setPlanosConfig); },[]);
+  const [mesOffset, setMesOffset] = useState(0); // offset para meses retroativos
   const [viewCartao, setViewCartao] = useState(null);
   // Timeout de segurança — sai do loading após 10s mesmo se Firebase travar
   useEffect(() => {
@@ -179,6 +319,48 @@ export default function App() {
   const totalParcelasRestantes = useMemo(()=>
     parcelasComRestante.reduce((s,p)=>s+Number(p.valor)*p.parcelasRestantes,0),[parcelasComRestante]);
 
+  // Total das parcelas só do mês atual
+  const totalParcelasMesAtual = useMemo(()=>
+    parcelasComRestante.reduce((s,p)=>s+(p.parcelasRestantes>0?Number(p.valor):0),0),[parcelasComRestante]);
+
+
+
+  // Calcula o mês mais antigo disponível para consulta (data de início mais antiga)
+  const mesMinParcelas = useMemo(()=>{
+    let minOffset = 0;
+    parcelas.forEach(p=>{
+      if (p.dataCadastro) {
+        const cadastro = new Date(p.dataCadastro);
+        const agora = getNow();
+        const diff = (agora.getFullYear()-cadastro.getFullYear())*12+(agora.getMonth()-cadastro.getMonth());
+        if (-diff < minOffset) minOffset = -diff;
+      }
+    });
+    return minOffset; // negativo = meses no passado
+  },[parcelas]);
+
+  const parcelasNoMesSel = useMemo(()=>{
+    // mesParcelas pode ser negativo (meses passados) ou positivo (futuros)
+    const offset = mesParcelas; // índice relativo ao mês atual
+    return parcelas.map(p=>{
+      const totalP = Number(p.parcelasOriginal||p.parcelas);
+      let mesesDecorridos = 0;
+      if (p.dataCadastro) {
+        const cadastro = new Date(p.dataCadastro);
+        const agora = getNow();
+        mesesDecorridos = (agora.getFullYear()-cadastro.getFullYear())*12+(agora.getMonth()-cadastro.getMonth());
+      }
+      // Parcela atual no mês selecionado
+      const parcelaAtualNoMes = mesesDecorridos + offset + 1;
+      const restantesNoMes = totalP - parcelaAtualNoMes + 1;
+      if (parcelaAtualNoMes < 1 || parcelaAtualNoMes > totalP) return null;
+      return { ...p, restantesNoMes: Math.max(0,restantesNoMes), parcelaAtualNoMes, totalP };
+    }).filter(Boolean);
+  },[parcelas, mesParcelas]);
+
+  const totalParcelasNoMesSel = useMemo(()=>
+    parcelasNoMesSel.reduce((s,p)=>s+Number(p.valor),0),[parcelasNoMesSel]);
+
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async (u)=>{
       try {
@@ -196,17 +378,56 @@ export default function App() {
               const d = snap.data();
               if (d.parcelas) setParcelas(d.parcelas);
               if (d.fixos) setFixos(d.fixos);
-              if (d.extras) setExtras(d.extras);
+              if (d.extras) {
+            // Migra gastos antigos que usam índice para mes+ano real
+            const agora = new Date();
+            const extrasMigrados = d.extras.map(e => {
+              if (e.mesReal !== undefined && e.anoReal !== undefined) return e;
+              // Converte índice relativo para mes/ano absoluto
+              // Usa data de criação se disponível, senão assume mês atual
+              const idxMes = e.mes ?? 0;
+              const d2 = new Date(agora.getFullYear(), agora.getMonth() + idxMes, 1);
+              return { ...e, mesReal: d2.getMonth(), anoReal: d2.getFullYear() };
+            });
+            setExtras(extrasMigrados);
+          }
               if (d.salario) setSalario(d.salario);
-              if (d.extrasReceita) setExtrasReceita(d.extrasReceita);
+              if (d.extrasReceita) {
+            const ag = new Date();
+            setExtrasReceita(d.extrasReceita.map(e=>{
+              if (e.mesReal!==undefined && e.anoReal!==undefined) return e;
+              const off = e.offset ?? e.mes ?? 0;
+              const d2 = new Date(ag.getFullYear(), ag.getMonth()+off, 1);
+              return { ...e, mesReal:d2.getMonth(), anoReal:d2.getFullYear() };
+            }));
+          }
               if (d.cartoes) setCartoes(d.cartoes);
+          if (d.categorias) setCategorias(d.categorias);
+          if (d.saudeConfig) setSaudeConfig(d.saudeConfig);
+          if (d.nome) setNomeUsuario(d.nome);
+          if (d.sobrenome) setSobrenomeUsuario(d.sobrenome);
+          if (d.trialFim) setTrialFim(d.trialFim);
+          if (d.plano) setPlanoDb(d.plano);
+          setNotifLidas(d.notifLidas || {});
+          setOnboardingConcluido(d.onboardingConcluido === true);
+          identificarUsuario(u.uid, d.plano || 'free');
+          setGuiasVistos(d.guiasVistos || {});
+
+          const fb = d.feedback || {};
+          const criado = d.criadoEm ? new Date(d.criadoEm) : null;
+          const diasDeConta = criado ? (Date.now() - criado.getTime()) / 86400000 : 0;
+          const dias = (iso) => iso ? (Date.now() - new Date(iso).getTime()) / 86400000 : 999;
+          const INTERVALO = 7;
+          if (diasDeConta >= 7 && dias(fb.data) >= INTERVALO && dias(fb.adiadoEm) >= INTERVALO) {
+            setMostrarFeedback(true);
+          }
               if (d.preferencias?.dark !== undefined) {
                 setDark(d.preferencias.dark);
                 try { document.cookie = `finan_tema=${d.preferencias.dark};max-age=31536000;path=/`; } catch {}
               }
             }
           } catch(firestoreErr) {
-            console.error("Erro Firestore:", firestoreErr);
+            registrarErro(firestoreErr, { origem: 'carregar_dados' });
           }
           setLoadStatus("loaded");
         }
@@ -225,9 +446,9 @@ export default function App() {
     try {
       await setDoc(doc(db,"usuarios",auth.currentUser.uid),{
         parcelas:parc, fixos:fix, extras:ext, salario:sal,
-        extrasReceita:extRec, cartoes:carts,
+        extrasReceita:extRec, cartoes:carts, categorias:categorias, saudeConfig:saudeConfig,
         ...(prefs !== undefined ? { preferencias:prefs } : {})
-      });
+      }, { merge:true });
       setSaveStatus("saved");
     } catch { setSaveStatus("error"); }
     setTimeout(()=>setSaveStatus("idle"),3000);
@@ -235,7 +456,7 @@ export default function App() {
 
   useEffect(()=>{
     if (loadStatus!=="loaded") return;
-    const t = setTimeout(()=>handleSave(parcelas,fixos,extras,salario,extrasReceita,cartoes),800);
+    const t = setTimeout(()=>handleSave(parcelas,fixos,extras,salario,extrasReceita,cartoes),800); // categorias e saudeConfig salvos via useEffect separado
     return ()=>clearTimeout(t);
   },[parcelas,fixos,extras,salario,extrasReceita,cartoes,loadStatus,handleSave]);
 
@@ -247,28 +468,155 @@ export default function App() {
     } catch(e) { console.error("Erro ao salvar preferências:", e); }
   };
 
+  // Salva categorias e saúde quando mudam
+  useEffect(()=>{
+    if (loadStatus!=="loaded") return;
+    const t = setTimeout(()=>{
+      if (!auth.currentUser) return;
+      setDoc(doc(db,"usuarios",auth.currentUser.uid),{ categorias, saudeConfig },{ merge:true });
+    },800);
+    return ()=>clearTimeout(t);
+  },[categorias,saudeConfig,loadStatus]);
+
   const totalFixos = useMemo(()=>fixos.reduce((s,f)=>s+Number(f.valor),0),[fixos]);
 
   const receitaMes = useCallback((idx)=>{
-    const ext = extrasReceita.filter(e=>e.mes===idx).reduce((s,e)=>s+Number(e.valor),0);
-    return salario+ext;
+    const m = MESES[idx];
+    if (!m) return salario;
+    const ext = extrasReceita.filter(e=>{
+      if (e.mesReal!==undefined && e.anoReal!==undefined) return e.mesReal===m.mes && e.anoReal===m.ano;
+      const off = e.offset ?? e.mes ?? 0;
+      return off === idx;
+    }).reduce((s,e)=>s+Number(e.valor||0),0);
+    return salario + ext;
   },[salario,extrasReceita]);
 
   const projecao = useMemo(()=>MESES.map((m,i)=>{
     const totalParc = parcelasComRestante.reduce((s,p)=>s+(i<p.parcelasRestantes?Number(p.valor):0),0);
-    const totalExtra = extras.filter(e=>e.mes===i).reduce((s,e)=>s+Number(e.valor),0);
+    // Filtra extras pelo mes+ano real
+    const totalExtra = extras.filter(e=>{
+      if (e.mesReal!==undefined && e.anoReal!==undefined) {
+        return e.mesReal===m.mes && e.anoReal===m.ano;
+      }
+      return e.mes===i; // fallback dados antigos
+    }).reduce((s,e)=>s+Number(e.valor),0);
     const gastos = totalFixos+totalParc+totalExtra;
     const receita = receitaMes(i);
     return { ...m, totalParc, totalExtra, gastos, sobra:receita-gastos, receita };
   }),[parcelasComRestante,fixos,extras,totalFixos,receitaMes]);
 
+  // Indicador de saúde financeira
+  const indicadorSaude = useMemo(()=>{
+    const receita = receitaMes(0);
+    if (!receita) return null;
+    const gastos = totalFixos + totalParcelasMesAtual;
+    const pct = Math.round((gastos/receita)*100);
+    if (pct<=saudeConfig.saudavel) return { label:"Saudável", emoji:"💚", cor:C.green, pct };
+    if (pct<=saudeConfig.atencao) return { label:"Atenção", emoji:"🟡", cor:C.yellow, pct };
+    return { label:"Crítico", emoji:"🔴", cor:C.red, pct };
+  },[totalFixos,totalParcelasMesAtual,saudeConfig,receitaMes,C]);
+
   const inp = (ov={})=>({ width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface, color:C.grayLight, fontSize:"0.82rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box", ...ov });
   const btnPri = { background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, border:"none", borderRadius:8, color:"#fff", padding:"10px 18px", fontSize:"0.82rem", fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" };
   const saveBtnStyle = { display:"inline-flex", alignItems:"center", gap:6, border:"none", borderRadius:8, color:"#fff", padding:"7px 14px", fontSize:"0.78rem", fontWeight:700, cursor:saveStatus==="saving"?"not-allowed":"pointer", fontFamily:"inherit", transition:"all 0.3s", background:saveStatus==="saved"?"#1a4a2e":saveStatus==="error"?"#4a1a1a":`linear-gradient(135deg,#1d6fa4,#2188c9)`, opacity:saveStatus==="saving"?0.75:1 };
 
-  const salvarFixo = ()=>{ if(!editandoFixo?.nome||!editandoFixo?.valor)return; setFixos(p=>p.map(f=>f.id===editandoFixo.id?{...editandoFixo,valor:parseFloat(editandoFixo.valor)}:f)); setEditandoFixo(null); };
+  const trialAtivo = trialFim ? new Date(trialFim) > new Date() : false;
+  const planoAtivo = (planoDb === "pro" || trialAtivo) ? "pro" : "free";
+  const planoAtualObj = planosConfig[planoAtivo];
+  const diasTrialRestantes = trialAtivo ? Math.ceil((new Date(trialFim) - new Date()) / 86400000) : 0;
+
+  const alertasAtivos = saudeConfig?.ativos !== false;
+
+  const TelaUpgrade = showUpgrade ? (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={()=>setShowUpgrade(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{ background: dark ? "#1a1a2e" : "#fff", borderRadius:16, padding:24, maxWidth:340, textAlign:"center" }}>
+        <div style={{ fontSize:"1.6rem", marginBottom:8 }}>🔒</div>
+        <div style={{ fontSize:"1rem", fontWeight:800, marginBottom:8, color: dark ? "#fff" : "#111" }}>Limite do plano gratuito atingido</div>
+        <div style={{ fontSize:"0.85rem", color: dark ? "#aaa" : "#555", marginBottom:16, lineHeight:1.5 }}>
+          Assine o plano Pro para cadastrar sem limites, ou continue no gratuito removendo algum item existente.
+        </div>
+        <button onClick={()=>{ setShowUpgrade(null); setAba("conta"); setAbaContaInicial("plano"); }} style={{ width:"100%", padding:"12px", borderRadius:10, background:"#6366f1", color:"#fff", border:"none", fontWeight:700, marginBottom:8 }}>Ver planos</button>
+        <button onClick={()=>setShowUpgrade(null)} style={{ width:"100%", padding:"10px", borderRadius:10, background:"transparent", color: dark ? "#aaa" : "#555", border:"none" }}>Agora não</button>
+      </div>
+    </div>
+  ) : null;
+
+  const notificacoes = useMemo(()=>gerarNotificacoes({
+    projecao, saudeConfig, parcelas: parcelasComRestante, salario, lidas: notifLidas
+  }), [projecao, saudeConfig, parcelasComRestante, salario, notifLidas]);
+
+  const naoLidas = notificacoes.filter(n=>!n.lida).length;
+
+  const salvarLidas = async (novas) => {
+    setNotifLidas(novas);
+    try {
+      if (auth.currentUser) await setDoc(doc(db,"usuarios",auth.currentUser.uid), { notifLidas: novas }, { merge:true });
+    } catch(e){ console.error(e); }
+  };
+  const marcarLida = (id) => salvarLidas({ ...notifLidas, [id]: true });
+  const marcarTodasLidas = () => {
+    const novas = { ...notifLidas };
+    notificacoes.forEach(n=>{ novas[n.id] = true; });
+    salvarLidas(novas);
+  };
+
+  const abrirRaioX = (m, idx) => {
+    const parcelasMes = parcelasComRestante
+      .filter(p=>idx < p.parcelasRestantes)
+      .map(p=>{
+        const totalP = Number(p.parcelasOriginal||p.parcelas);
+        const atual = totalP - p.parcelasRestantes + idx + 1;
+        return { ...p, parcelaLabel:`${atual}/${totalP}` };
+      });
+    const gastosMes = extras.filter(e=>{
+      if (e.mesReal!==undefined && e.anoReal!==undefined) return e.mesReal===m.mes && e.anoReal===m.ano;
+      return e.mes===idx;
+    });
+    registrarEvento('raiox_aberto', { mes_offset: idx });
+    setRaioXMes({ mes:m, dados:{ receita:m.receita, fixos, parcelasMes, gastosMes } });
+  };
+
+  const finalizarOnboarding = async (cfg) => {
+    if (cfg.salario) setSalario(cfg.salario);
+    if (cfg.cartoes?.length) setCartoes(cfg.cartoes);
+    if (cfg.saudeConfig) setSaudeConfig(cfg.saudeConfig);
+    setOnboardingConcluido(true);
+    registrarEvento('onboarding_concluido', { tem_renda: !!cfg.salario, qtd_cartoes: (cfg.cartoes||[]).length, alertas: cfg.saudeConfig?.ativos !== false });
+    try {
+      if (auth.currentUser) {
+        await setDoc(doc(db,"usuarios",auth.currentUser.uid), {
+          salario: cfg.salario || 0,
+          cartoes: cfg.cartoes || [],
+          saudeConfig: cfg.saudeConfig,
+          situacao: cfg.situacao || null,
+          preferencias: { dark: cfg.dark },
+          onboardingConcluido: true,
+        }, { merge:true });
+      }
+    } catch(e) { console.error(e); }
+  };
+
+  const marcarGuiaVisto = async (tipo) => {
+    const novos = { ...guiasVistos, [tipo]: true };
+    setGuiasVistos(novos);
+    setGuiaAtivo(null);
+    try {
+      if (auth.currentUser) {
+        await setDoc(doc(db,"usuarios",auth.currentUser.uid), { guiasVistos: novos }, { merge:true });
+      }
+    } catch(e) { console.error(e); }
+  };
+
+  const irParaAba = (k) => {
+    setShowEditar(false);
+    setAba(k);
+    registrarTela(k);
+    if (onboardingConcluido && !guiasVistos[k]) setGuiaAtivo(k);
+  };
+
+  const salvarFixo = ()=>{ if(!editandoFixo?.nome||!editandoFixo?.valor)return; const eh_novo = !fixos.some(f=>f.id===editandoFixo.id); if(eh_novo && !podeAdicionar(planoAtivo,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(p=>p.map(f=>f.id===editandoFixo.id?{...editandoFixo,valor:parseFloat(editandoFixo.valor)}:f)); setEditandoFixo(null); };
   const salvarExtra = ()=>{ if(!editandoExtra?.nome||!editandoExtra?.valor)return; setExtras(p=>p.map(e=>e.id===editandoExtra.id?{...editandoExtra,valor:parseFloat(editandoExtra.valor)}:e)); setEditandoExtra(null); };
-  const salvarParcela = ()=>{ if(!editandoParcela?.nome||!editandoParcela?.valor)return; setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:parseFloat(editandoParcela.valor),parcelas:parseInt(editandoParcela.parcelas),parcelasOriginal:parseInt(editandoParcela.parcelas)}:x)); setEditandoParcela(null); };
+  const salvarParcela = ()=>{ if(!editandoParcela?.nome||!editandoParcela?.valor)return; const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id); if(eh_novo && !podeAdicionar(planoAtivo,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; } setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:parseFloat(editandoParcela.valor),parcelas:parseInt(editandoParcela.parcelas),parcelasOriginal:parseInt(editandoParcela.parcelas)}:x)); setEditandoParcela(null); };
 
   if (authLoading||loadStatus==="loading") return (
     <div style={{ minHeight:"100vh", background:CORES.bg, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
@@ -279,18 +627,80 @@ export default function App() {
   );
 
   if (!user) return <Login/>;
+
+  if (!onboardingConcluido) return (
+    <Onboarding C={C} dark={dark} setDark={setDark} nome={nomeUsuario} onFinalizar={finalizarOnboarding}/>
+  );
   const mesAtual = projecao[0];
 
+  if (raioXMes) return (
+    <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      <RaioXMes C={C} mes={raioXMes.mes} dados={raioXMes.dados}
+        categorias={categorias} cartoes={cartoes}
+        onVoltar={()=>setRaioXMes(null)}/>
+    </div>
+  );
+
+  if (telaEspecial === "notificacoes") return (
+    <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      <Notificacoes
+        C={C} notificacoes={notificacoes} alertasAtivos={alertasAtivos}
+        onVoltar={()=>setTelaEspecial(null)}
+        onMarcarLida={marcarLida} onMarcarTodas={marcarTodasLidas}
+        onIrCadastros={()=>{ setTelaEspecial(null); setAba("cadastros"); }}
+      />
+    </div>
+  );
+
+  if (telaEspecial === "conta") return (
+    <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      <GerenciarConta
+        C={C} onVoltar={()=>setTelaEspecial(null)} abaInicial={abaConta}
+        dadosApp={{ parcelas, fixos, extras, salario, extrasReceita, cartoes, categorias, saudeConfig }}
+      />
+    </div>
+  );
+
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',sans-serif", color:C.grayLight, transition:"background 0.3s" }}>
+    <div onClick={()=>menuPerfil && setMenuPerfil(false)} style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',sans-serif", color:C.grayLight, transition:"background 0.3s" }}>
       <style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes drop{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
         *{box-sizing:border-box}
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-thumb{background:#21262d;border-radius:4px}
       `}</style>
+
+      {/* Modal confirmação remoção */}
+      {confirmRemover && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+          onClick={()=>setConfirmRemover(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:16, padding:24, width:"100%", maxWidth:320, border:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:"1.5rem", textAlign:"center", marginBottom:12 }}>🗑️</div>
+            <h3 style={{ fontSize:"0.95rem", fontWeight:800, color:C.grayLight, margin:"0 0 8px", textAlign:"center" }}>Confirmar remoção</h3>
+            <p style={{ fontSize:"0.82rem", color:C.gray, textAlign:"center", margin:"0 0 20px", lineHeight:1.5 }}>
+              Deseja remover <strong style={{ color:C.grayLight }}>{confirmRemover.nome}</strong>? Esta ação não pode ser desfeita.
+            </p>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>setConfirmRemover(null)} style={{ flex:1, padding:"11px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.gray, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>Cancelar</button>
+              <button onClick={()=>{
+                if (confirmRemover.tipo==="parcela") setParcelas(x=>x.filter(i=>i.id!==confirmRemover.id));
+                if (confirmRemover.tipo==="fixo") setFixos(x=>x.filter(i=>i.id!==confirmRemover.id));
+                if (confirmRemover.tipo==="extra") setExtras(x=>x.filter(i=>i.id!==confirmRemover.id));
+                setConfirmRemover(null);
+              }} style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:C.red, color:"#fff", cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {guiaAtivo && (
+        <GuiaTela C={C} tipo={guiaAtivo}
+          onFechar={()=>setGuiaAtivo(null)}
+          onNaoMostrar={()=>marcarGuiaVisto(guiaAtivo)}/>
+      )}
 
       {showProfile && !showEditar && (
         <ModalPerfil
@@ -303,11 +713,64 @@ export default function App() {
       {/* HEADER */}
       <div style={{ background:C.card, borderBottom:`1px solid ${C.border}`, padding:"12px 16px", position:"sticky", top:0, zIndex:100 }}>
         <div style={{ maxWidth:700, margin:"0 auto", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <h1 style={{ fontSize:"1.1rem", fontWeight:800, color:C.grayLight, margin:0 }}>
-            <span style={{ color:C.primary }}>💳</span> FinanControl
-          </h1>
-          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            <button onClick={()=>setShowProfile(true)} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:8, color:C.gray, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}>👤</button>
+          <div>
+            <img src="/logo512.png" alt="Von Finance" style={{ height:38, display:"block" }}/>
+          </div>
+
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <button onClick={()=>setTelaEspecial("notificacoes")}
+              style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", position:"relative" }}>
+              <SinoIcon size={19} cor={C.gray}/>
+              {naoLidas>0 && (
+                <span style={{ position:"absolute", top:5, right:5, minWidth:15, height:15, borderRadius:8, background:C.red, color:"#fff", fontSize:"0.58rem", fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", border:`2px solid ${C.card}` }}>
+                  {naoLidas}
+                </span>
+              )}
+            </button>
+
+            <div style={{ position:"relative" }} onClick={e=>e.stopPropagation()}>
+              <button onClick={()=>setMenuPerfil(v=>!v)}
+                style={{ background:"linear-gradient(135deg,#1d6fa4,#2188c9)", border:"none", borderRadius:"50%", width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#fff", fontWeight:800, fontSize:"0.78rem" }}>
+                {(nomeUsuario[0]||user.email[0]||"?").toUpperCase()}{(sobrenomeUsuario[0]||"").toUpperCase()}
+              </button>
+
+              {menuPerfil && (
+                <div style={{ position:"absolute", top:46, right:0, width:250, background:C.card, borderRadius:14, border:`1px solid ${C.border}`, boxShadow:"0 12px 32px rgba(0,0,0,0.35)", overflow:"hidden", animation:"drop 0.16s ease", zIndex:200 }}>
+                  <div style={{ padding:"14px 15px", borderBottom:`1px solid ${C.border}`, display:"flex", gap:11, alignItems:"center" }}>
+                    <div style={{ width:40, height:40, borderRadius:"50%", background:"linear-gradient(135deg,#1d6fa4,#2188c9)", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontWeight:800, fontSize:"0.85rem", flexShrink:0 }}>
+                      {(nomeUsuario[0]||user.email[0]||"?").toUpperCase()}{(sobrenomeUsuario[0]||"").toUpperCase()}
+                    </div>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ fontSize:"0.85rem", fontWeight:700, color:C.grayLight }}>
+                        {nomeUsuario ? `${nomeUsuario} ${sobrenomeUsuario}`.trim() : "Minha conta"}
+                      </div>
+                      <div style={{ fontSize:"0.68rem", color:C.gray, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.email}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ padding:6 }}>
+                    {[
+                      { i:"⚙️", l:"Gerenciar conta", a:()=>{ setAbaConta("dados"); setTelaEspecial("conta"); setMenuPerfil(false); } },
+                      { i:"⭐", l:"Ver planos", a:()=>{ registrarEvento("ver_planos", { origem: "menu_perfil" }); setAbaConta("plano"); setTelaEspecial("conta"); setMenuPerfil(false); }, destaque:true },
+                      { i:dark?"☀️":"🌙", l:dark?"Tema claro":"Tema escuro", a:()=>{ const novo=!dark; setDark(novo); salvarPreferencias({dark:novo}); } },
+                      { i:"📲", l:"Convidar amigos", a:()=>{ window.open(`https://wa.me/?text=${encodeURIComponent("Conheça o Von Finance: https://von-finance-six.vercel.app")}`,"_blank"); setMenuPerfil(false); } },
+                    ].map(o=>(
+                      <button key={o.l} onClick={o.a}
+                        style={{ width:"100%", background:"none", border:"none", padding:"10px 9px", borderRadius:9, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:10, textAlign:"left", color: o.destaque ? C.primaryLight : C.grayLight, fontSize:"0.8rem", fontWeight: o.destaque?700:500 }}>
+                        <span style={{ fontSize:"0.9rem", width:18 }}>{o.i}</span>{o.l}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ padding:6, borderTop:`1px solid ${C.border}` }}>
+                    <button onClick={()=>{ registrarEvento('logout'); limparUsuario(); signOut(auth); }}
+                      style={{ width:"100%", background:"none", border:"none", padding:"10px 9px", borderRadius:9, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:10, color:C.red, fontSize:"0.8rem", fontWeight:600 }}>
+                      <span style={{ fontSize:"0.9rem", width:18 }}>🚪</span>Sair da conta
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -326,17 +789,13 @@ export default function App() {
 
         {/* PROJEÇÃO */}
         {!showEditar && aba==="projecao" && (
-          <div style={{ animation:"fadeIn 0.25s ease" }}>
+                    <div style={{ animation:"fadeIn 0.25s ease" }}>
+              {mostrarFeedback && <Feedback C={C} onFechar={()=>setMostrarFeedback(false)} />}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
               <h2 style={{ fontSize:"0.95rem", fontWeight:700, margin:0, color:C.grayLight }}>Projeção</h2>
-              <div style={{ display:"flex", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                <button onClick={()=>setViewCartao(null)} style={{ padding:"6px 12px", border:"none", fontSize:"0.72rem", fontWeight:600, cursor:"pointer", fontFamily:"inherit", background:viewCartao===null?C.primary:"transparent", color:viewCartao===null?"#fff":C.gray }}>Mensal</button>
-                <button onClick={()=>setViewCartao("cartao")} style={{ padding:"6px 12px", border:"none", fontSize:"0.72rem", fontWeight:600, cursor:"pointer", fontFamily:"inherit", background:viewCartao==="cartao"?C.primary:"transparent", color:viewCartao==="cartao"?"#fff":C.gray }}>Por cartão</button>
               </div>
-            </div>
-
             {/* MENSAL */}
-            {viewCartao===null && (
+            {true && (
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                 {projecao.map((m,i)=>{
                   const cor = corSobra(m.sobra,C);
@@ -350,13 +809,13 @@ export default function App() {
                   return (
                     <div key={i} style={{ background:C.card, borderRadius:16, border:`1px solid ${aberto?cor+"66":C.border}`, overflow:"hidden", transition:"all 0.2s", boxShadow:aberto?`0 4px 20px ${cor}22`:"none" }}>
                       <div style={{ height:3, background:`linear-gradient(90deg,${cor},${cor}44)` }}/>
-                      <div onClick={()=>setExpandidosProj(p=>({...p,[i]:!p[i]}))} style={{ padding:"16px", cursor:"pointer" }}>
+                      <div onClick={()=>abrirRaioX(m,i)} style={{ padding:"16px", cursor:"pointer" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:16 }}>
                           <Donut pct={pct} cor={cor} C={C} size={80} stroke={8}/>
                           <div style={{ flex:1 }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
                               <span style={{ fontSize:"1rem", fontWeight:800, color:C.grayLight }}>{m.label}</span>
-                              <span style={{ color:C.gray, fontSize:"0.7rem" }}>{aberto?"▲":"▼"}</span>
+                              <span style={{ color:C.primaryLight, fontSize:"0.68rem", fontWeight:700, whiteSpace:"nowrap" }}>Ver detalhes ›</span>
                             </div>
                             <div style={{ fontSize:"0.62rem", color:C.gray, marginBottom:2 }}>Saldo restante</div>
                             <div style={{ fontSize:"1.3rem", fontWeight:800, color:cor, lineHeight:1.1 }}>{fmt(m.sobra)}</div>
@@ -417,79 +876,7 @@ export default function App() {
             )}
 
             {/* POR CARTÃO — mês a mês com total, expandindo mostra cada cartão */}
-            {viewCartao==="cartao" && (
-              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {projecao.map((m,i)=>{
-                  const aberto = expandidosCartMes[i];
-                  // Total geral de todos os cartões neste mês
-                  const totalMesGeral = cartoes.reduce((sum, cartao)=>{
-                    const parcsCartao = parcelasComRestante.filter(p=>p.grupo===cartao.nome&&i<p.parcelasRestantes).reduce((s,p)=>s+Number(p.valor),0);
-                    const gastosCartao = extras.filter(e=>e.cartao===cartao.nome&&e.mes===i).reduce((s,e)=>s+Number(e.valor),0);
-                    return sum + parcsCartao + gastosCartao;
-                  },0);
-
-                  if (totalMesGeral===0&&!aberto) return null;
-
-                  // Cartões com gasto neste mês
-                  const cartoesComGasto = cartoes.map(cartao=>{
-                    const parcsCartao = parcelasComRestante.filter(p=>p.grupo===cartao.nome&&i<p.parcelasRestantes).reduce((s,p)=>s+Number(p.valor),0);
-                    const gastosCartao = extras.filter(e=>e.cartao===cartao.nome&&e.mes===i).reduce((s,e)=>s+Number(e.valor),0);
-                    return { ...cartao, totalMes: parcsCartao+gastosCartao, parcelas: parcsCartao, gastos: gastosCartao };
-                  }).filter(c=>c.totalMes>0);
-
-                  if (cartoesComGasto.length===0) return null;
-
-                  return (
-                    <div key={i} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                      <div onClick={()=>setExpandidosCartMes(p=>({...p,[i]:!p[i]}))} style={{ padding:"14px 16px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <div>
-                          <div style={{ fontSize:"0.92rem", fontWeight:800, color:C.grayLight }}>{m.label}</div>
-                          <div style={{ fontSize:"0.65rem", color:C.gray, marginTop:2 }}>{cartoesComGasto.length} cartão(ões) com gasto</div>
-                        </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:"0.95rem", fontWeight:800, color:C.primary }}>{fmt(totalMesGeral)}</div>
-                            <div style={{ fontSize:"0.6rem", color:C.gray }}>total no mês</div>
-                          </div>
-                          <span style={{ color:C.gray, fontSize:"0.7rem" }}>{aberto?"▲":"▼"}</span>
-                        </div>
-                      </div>
-
-                      {aberto&&(
-                        <div style={{ padding:"0 16px 14px", animation:"fadeIn 0.2s ease" }}>
-                          <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:10, display:"flex", flexDirection:"column", gap:6 }}>
-                            {cartoesComGasto.map(cartao=>(
-                              <div key={cartao.nome} style={{ background:C.surface, borderRadius:10, padding:"10px 12px", border:`1px solid ${C.border}` }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: (cartao.parcelas>0&&cartao.gastos>0)?8:0 }}>
-                                  <CartaoLogo grupo={cartao.nome} cartoes={cartoes} size={28}/>
-                                  <div style={{ flex:1 }}>
-                                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.grayLight }}>{cartao.nome}</div>
-                                  </div>
-                                  <div style={{ fontSize:"0.88rem", fontWeight:800, color:C.primary }}>{fmt(cartao.totalMes)}</div>
-                                </div>
-                                {/* Detalhe parcelas vs gastos do mês */}
-                                {cartao.parcelas>0&&cartao.gastos>0&&(
-                                  <div style={{ display:"flex", gap:8, paddingLeft:38 }}>
-                                    <span style={{ fontSize:"0.65rem", color:C.primary }}>💳 Parcelas: {fmt(cartao.parcelas)}</span>
-                                    <span style={{ fontSize:"0.65rem", color:C.purple }}>🗓️ Gastos: {fmt(cartao.gastos)}</span>
-                                  </div>
-                                )}
-                                {cartao.parcelas>0&&cartao.gastos===0&&(
-                                  <div style={{ paddingLeft:38, fontSize:"0.65rem", color:C.primary }}>💳 Parcelas: {fmt(cartao.parcelas)}</div>
-                                )}
-                                {cartao.gastos>0&&cartao.parcelas===0&&(
-                                  <div style={{ paddingLeft:38, fontSize:"0.65rem", color:C.purple }}>🗓️ Gastos do mês: {fmt(cartao.gastos)}</div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            
           </div>
         )}
 
@@ -502,6 +889,8 @@ export default function App() {
                 {showNovaParcela?"✕ Fechar":"+ Nova parcela"}
               </button>
             </div>
+
+            {/* Form nova parcela */}
             {showNovaParcela&&(
               <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.primary}55`, marginBottom:14, animation:"fadeIn 0.2s ease" }}>
                 <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Nova parcela</div>
@@ -515,34 +904,90 @@ export default function App() {
                     <input placeholder="Descrição" value={novaParc.nome} onChange={e=>setNovaParc(p=>({...p,nome:e.target.value}))} style={inp()}/>
                     <input type="number" placeholder="Valor (R$)" value={novaParc.valor} onChange={e=>setNovaParc(p=>({...p,valor:e.target.value}))} style={inp()}/>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:8 }}>
-                    <input type="number" placeholder="Parcelas restantes" value={novaParc.parcelas} onChange={e=>setNovaParc(p=>({...p,parcelas:e.target.value}))} style={inp()}/>
-                    <button onClick={()=>{
-                      if(!novaParc.nome||!novaParc.valor||!novaParc.parcelas||!novaParc.grupo)return;
-                      setParcelas(p=>[...p,{...novaParc,id:Date.now(),valor:parseFloat(novaParc.valor),parcelas:parseInt(novaParc.parcelas),parcelasOriginal:parseInt(novaParc.parcelas),dataCadastro:new Date().toISOString()}]);
-                      setNovaParc(prev=>({grupo:prev.grupo,nome:"",valor:"",parcelas:""}));
-                      setShowNovaParcela(false);
-                    }} style={btnPri}>Adicionar</button>
+                  <input type="number" placeholder="Total de parcelas" value={novaParc.parcelas} onChange={e=>setNovaParc(p=>({...p,parcelas:e.target.value}))} style={inp()}/>
+                  <div>
+                    <div style={{ fontSize:"0.62rem", color:C.gray, marginBottom:3 }}>📅 Data da 1ª parcela</div>
+                    <div style={{ position:"relative", overflow:"hidden", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface }}>
+                      <input type="date" value={novaParc.dataInicio||""}
+                        onChange={e=>setNovaParc(p=>({...p,dataInicio:e.target.value}))}
+                        style={{ width:"100%", padding:"9px 12px", background:"transparent", border:"none", color:novaParc.dataInicio?C.grayLight:C.gray, fontSize:"0.82rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
+                      />
+                    </div>
                   </div>
+                  <select value={novaParc.categoria||""} onChange={e=>setNovaParc(p=>({...p,categoria:e.target.value}))} style={inp()}>
+                    <option value="">Categoria (opcional)</option>
+                    {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
+                  </select>
+                  <div style={{ fontSize:"0.65rem", color:C.gray, padding:"6px 8px", background:C.surface, borderRadius:6 }}>
+                    📅 A data de início define quando a primeira parcela foi cobrada
+                  </div>
+                  <button onClick={()=>{
+                    if(!novaParc.nome||!novaParc.valor||!novaParc.parcelas||!novaParc.grupo)return;
+                    const dataInicio = novaParc.dataInicio ? new Date(novaParc.dataInicio).toISOString() : new Date().toISOString();
+                    if(!podeAdicionar(planoAtivo,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
+                    setParcelas(p=>[...p,{
+                      ...novaParc,
+                      id:Date.now(),
+                      valor:parseFloat(novaParc.valor),
+                      parcelas:parseInt(novaParc.parcelas),
+                      parcelasOriginal:parseInt(novaParc.parcelas),
+                      dataCadastro: dataInicio,
+                    }]);
+                    setNovaParc(prev=>({grupo:prev.grupo,nome:"",valor:"",parcelas:"",dataInicio:""}));
+                    setShowNovaParcela(false);
+                  }} style={btnPri}>Adicionar</button>
                 </div>
               </div>
             )}
+
+            {/* Seletor de mês */}
             {parcelasComRestante.length>0&&(
-              <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}` }}>
-                <span style={{ fontSize:"0.82rem", fontWeight:700, color:C.grayLight }}>Valor total de parcelas</span>
-                <span style={{ color:C.primary, fontWeight:800, fontSize:"0.9rem" }}>{fmt(totalParcelasRestantes)}</span>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
+                <button onClick={()=>setMesParcelas(m=>m-1)} disabled={mesParcelas<=mesMinParcelas}
+                  style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesParcelas<=mesMinParcelas?C.border:C.gray, width:32, height:32, cursor:mesParcelas<=mesMinParcelas?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+                <div style={{ flex:1, textAlign:"center" }}>
+                  <div style={{ fontSize:"0.88rem", fontWeight:800, color:C.grayLight }}>
+                    {(()=>{
+                      const agora = getNow();
+                      const d = new Date(agora.getFullYear(), agora.getMonth()+mesParcelas, 1);
+                      return d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+                    })()}
+                    {mesParcelas < 0 && <span style={{ fontSize:"0.6rem", color:C.orange, marginLeft:6 }}>passado</span>}
+                  </div>
+                  <div style={{ fontSize:"0.62rem", color:C.gray }}>{parcelasNoMesSel.length} parcela(s) ativas</div>
+                </div>
+                <button onClick={()=>setMesParcelas(m=>Math.min(17,m+1))} disabled={mesParcelas>=17}
+                  style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesParcelas>=17?C.border:C.gray, width:32, height:32, cursor:mesParcelas>=17?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
               </div>
             )}
-            {grupos.length===0?(
+
+            {/* Total do mês selecionado */}
+            {parcelasNoMesSel.length>0&&(
+              <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.grayLight }}>
+                    {mesParcelas<0?"Total pago neste mês":"Total restante neste mês"}
+                  </div>
+                  <div style={{ fontSize:"0.62rem", color:C.gray, marginTop:2 }}>
+                    {parcelasNoMesSel.length} parcela(s) · {mesParcelas===0?"mês atual":mesParcelas<0?"histórico":"projeção"}
+                  </div>
+                </div>
+                <span style={{ color:C.primary, fontWeight:800, fontSize:"0.9rem", alignSelf:"center" }}>{fmt(totalParcelasNoMesSel)}</span>
+              </div>
+            )}
+
+            {parcelasNoMesSel.length===0?(
               <div style={{ textAlign:"center", color:C.gray, padding:"50px 0" }}>
                 <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>🧾</p>
-                <p style={{ fontSize:"0.85rem" }}>Nenhuma parcela cadastrada</p>
+                <p style={{ fontSize:"0.85rem" }}>
+                  {parcelasComRestante.length===0?"Nenhuma parcela cadastrada":`Nenhuma parcela ativa em ${MESES[mesParcelas]?.label}`}
+                </p>
               </div>
-            ):grupos.map(grupo=>{
-              const parcsGrupo = parcelasComRestante.filter(p=>p.grupo===grupo);
+            ):[...new Set(parcelasNoMesSel.map(p=>p.grupo))].map(grupo=>{
+              const parcsGrupo = parcelasNoMesSel.filter(p=>p.grupo===grupo);
               if(parcsGrupo.length===0)return null;
               const aberto = expandidosCart[grupo]!==false;
-              const totalGrupo = parcsGrupo.reduce((s,p)=>s+Number(p.valor)*p.parcelasRestantes,0);
+              const totalGrupo = parcsGrupo.reduce((s,p)=>s+Number(p.valor)*p.restantesNoMes,0);
               return (
                 <div key={grupo} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:8 }}>
                   <div onClick={()=>setExpandidosCart(p=>({...p,[grupo]:p[grupo]===false}))} style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
@@ -553,7 +998,7 @@ export default function App() {
                     </div>
                     <div style={{ textAlign:"right", marginRight:8 }}>
                       <div style={{ fontSize:"0.85rem", fontWeight:700, color:C.primary }}>{fmt(totalGrupo)}</div>
-                      <div style={{ fontSize:"0.6rem", color:C.gray }}>total restante</div>
+                      <div style={{ fontSize:"0.6rem", color:C.gray }}>restante</div>
                     </div>
                     <span style={{ color:C.gray, fontSize:"0.72rem" }}>{aberto?"▲":"▼"}</span>
                   </div>
@@ -562,8 +1007,6 @@ export default function App() {
                       <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:10, display:"flex", flexDirection:"column", gap:6 }}>
                         {parcsGrupo.map(p=>{
                           const expandido = expandidosParcela[p.id];
-                          const totalP = Number(p.parcelasOriginal||p.parcelas);
-                          const parcAtual = totalP-p.parcelasRestantes+1;
                           return (
                             <div key={p.id} style={{ background:C.surface, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden" }}>
                               {editandoParcela?.id===p.id?(
@@ -571,8 +1014,14 @@ export default function App() {
                                   <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                                     <input value={editandoParcela.nome} onChange={e=>setEditandoParcela(x=>({...x,nome:e.target.value}))} style={inp()}/>
                                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                                      <input type="number" value={editandoParcela.valor} onChange={e=>setEditandoParcela(x=>({...x,valor:e.target.value}))} style={inp()}/>
-                                      <input type="number" value={editandoParcela.parcelas} onChange={e=>setEditandoParcela(x=>({...x,parcelas:e.target.value}))} style={inp()}/>
+                                      <input type="number" placeholder="Valor" value={editandoParcela.valor} onChange={e=>setEditandoParcela(x=>({...x,valor:e.target.value}))} style={inp()}/>
+                                      <input type="number" placeholder="Total parcelas" value={editandoParcela.parcelas} onChange={e=>setEditandoParcela(x=>({...x,parcelas:e.target.value}))} style={inp()}/>
+                                    </div>
+                                    <div style={{ position:"relative", overflow:"hidden", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface }}>
+                                      <input type="date" value={editandoParcela.dataInicio?.split("T")[0]||""}
+                                        onChange={e=>setEditandoParcela(x=>({...x,dataInicio:e.target.value}))}
+                                        style={{ width:"100%", padding:"9px 12px", background:"transparent", border:"none", color:editandoParcela.dataInicio?C.grayLight:C.gray, fontSize:"0.82rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
+                                      />
                                     </div>
                                     <div style={{ display:"flex", gap:8 }}>
                                       <button onClick={salvarParcela} style={{ flex:2,...btnPri,padding:"9px" }}>✓ Salvar</button>
@@ -585,15 +1034,15 @@ export default function App() {
                                   <div onClick={()=>setExpandidosParcela(prev=>({...prev,[p.id]:!prev[p.id]}))} style={{ padding:"10px 12px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:"0.82rem", fontWeight:600, color:C.grayLight, marginBottom:3 }}>{p.nome}</div>
-                                      <span style={{ background:C.primary+"22", color:C.primary, borderRadius:20, padding:"1px 8px", fontSize:"0.62rem", fontWeight:700 }}>{parcAtual}/{totalP}</span>
+                                      <span style={{ background:C.primary+"22", color:C.primary, borderRadius:20, padding:"1px 8px", fontSize:"0.62rem", fontWeight:700 }}>{p.parcelaAtualNoMes}/{Number(p.parcelasOriginal||p.parcelas)}</span>
                                     </div>
                                     <div style={{ textAlign:"right", flexShrink:0 }}>
                                       <div style={{ fontSize:"0.95rem", fontWeight:800, color:C.primary }}>{fmt(p.valor)}</div>
                                       <div style={{ fontSize:"0.6rem", color:C.gray }}>por mês</div>
                                     </div>
                                     <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:10 }}>
-                                      <button onClick={e=>{e.stopPropagation();setEditandoParcela({...p});}} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
-                                      <button onClick={e=>{e.stopPropagation();setParcelas(x=>x.filter(i=>i.id!==p.id));}} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
+                                      <button onClick={e=>{e.stopPropagation();setEditandoParcela({...p,parcelas:p.parcelasRestantes});}} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
+                                      <button onClick={e=>{e.stopPropagation();setConfirmRemover({tipo:"parcela",id:p.id,nome:p.nome});}} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
                                       <span style={{ color:C.gray, fontSize:"0.7rem" }}>{expandido?"▲":"▼"}</span>
                                     </div>
                                   </div>
@@ -602,8 +1051,8 @@ export default function App() {
                                       <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:8, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
                                         {[
                                           { l:"Valor/mês", v:fmt(p.valor), c:C.primary },
-                                          { l:"Restam", v:`${p.parcelasRestantes}x`, c:C.grayLight },
-                                          { l:"Total restante", v:fmt(Number(p.valor)*p.parcelasRestantes), c:C.orange },
+                                          { l:`Restam em ${MESES[mesParcelas]?.label.split("/")[0]}`, v:`${p.restantesNoMes}x`, c:C.grayLight },
+                                          { l:"Total restante", v:fmt(Number(p.valor)*p.restantesNoMes), c:C.orange },
                                         ].map(({l,v,c})=>(
                                           <div key={l} style={{ background:C.card, borderRadius:8, padding:"7px 10px", border:`1px solid ${C.border}` }}>
                                             <div style={{ fontSize:"0.58rem", color:C.gray, marginBottom:2 }}>{l}</div>
@@ -611,6 +1060,11 @@ export default function App() {
                                           </div>
                                         ))}
                                       </div>
+                                      {p.dataInicio&&(
+                                        <div style={{ marginTop:6, fontSize:"0.65rem", color:C.gray, textAlign:"center" }}>
+                                          📅 Início: {new Date(p.dataInicio).toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </>
@@ -627,9 +1081,14 @@ export default function App() {
           </div>
         )}
 
-        {/* CARTÕES */}
-        {!showEditar && aba==="cartoes"&&(
-          <Cartoes cartoes={cartoes} setCartoes={setCartoes} dark={dark}/>
+        {/* CADASTROS */}
+        {!showEditar && aba==="cadastros"&&(
+          <Cadastros
+            cartoes={cartoes} setCartoes={setCartoes}
+            categorias={categorias} setCategorias={setCategorias}
+            saudeConfig={saudeConfig} setSaudeConfig={setSaudeConfig}
+            dark={dark}
+          />
         )}
 
         {/* FIXOS */}
@@ -643,67 +1102,109 @@ export default function App() {
                   <input placeholder="Descrição" value={novoFixo.nome} onChange={e=>setNovoFixo(f=>({...f,nome:e.target.value}))} style={inp()}/>
                   <input type="number" placeholder="Valor (R$)" value={novoFixo.valor} onChange={e=>setNovoFixo(f=>({...f,valor:e.target.value}))} style={inp()}/>
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:8 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                   <select value={novoFixo.cartao||""} onChange={e=>setNovoFixo(f=>({...f,cartao:e.target.value}))} style={inp()}>
                     <option value="">Sem cartão (opcional)</option>
                     {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
                   </select>
-                  <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:""}); }} style={btnPri}>+</button>
+                  <select value={novoFixo.categoria||""} onChange={e=>setNovoFixo(f=>({...f,categoria:e.target.value}))} style={inp()}>
+                    <option value="">Categoria</option>
+                    {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
+                  </select>
                 </div>
+                <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:"",categoria:""}); }} style={btnPri}>Adicionar</button>
               </div>
             </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-              {fixos.length===0?(
-                <div style={{ textAlign:"center", color:C.gray, padding:"50px 0" }}>
-                  <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>📌</p>
-                  <p style={{ fontSize:"0.85rem" }}>Nenhum gasto fixo cadastrado</p>
-                </div>
-              ):fixos.map(f=>(
-                <div key={f.id} style={{ background:C.card, borderRadius:10, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                  {editandoFixo?.id===f.id?(
-                    <div style={{ padding:"12px" }}>
-                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                          <input value={editandoFixo.nome} onChange={e=>setEditandoFixo(x=>({...x,nome:e.target.value}))} style={inp()}/>
-                          <input type="number" value={editandoFixo.valor} onChange={e=>setEditandoFixo(x=>({...x,valor:e.target.value}))} style={inp()}/>
+            {fixos.length===0 ? (
+              <div style={{ textAlign:"center", color:C.gray, padding:"50px 0" }}>
+                <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>📌</p>
+                <p style={{ fontSize:"0.85rem" }}>Nenhum gasto fixo cadastrado</p>
+              </div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {(()=>{
+                  const grupos = {};
+                  fixos.forEach(f=>{
+                    const k = f.cartao || "__sem__";
+                    if(!grupos[k]) grupos[k]=[];
+                    grupos[k].push(f);
+                  });
+                  const ordem = [...cartoes.map(x=>x.nome).filter(n=>grupos[n]), ...(grupos["__sem__"]?["__sem__"]:[])];
+                  return ordem.map(k=>{
+                    const itens = grupos[k]||[];
+                    const totalG = itens.reduce((s,f)=>s+Number(f.valor),0);
+                    const aberto = expandidosCart["fixo_"+k]!==false;
+                    const nomeG = k==="__sem__" ? "Sem cartão" : k;
+                    return (
+                      <div key={k} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+                        <div onClick={()=>setExpandidosCart(p=>({...p,["fixo_"+k]:p["fixo_"+k]===false}))}
+                          style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+                          {k!=="__sem__"
+                            ? <CartaoLogo grupo={k} cartoes={cartoes} size={32}/>
+                            : <div style={{ width:32, height:32, borderRadius:8, background:C.surface, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem", flexShrink:0 }}>📌</div>}
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:"0.85rem", fontWeight:700, color:C.grayLight }}>{nomeG}</div>
+                            <div style={{ fontSize:"0.62rem", color:C.gray }}>{itens.length} gasto(s) fixo(s)</div>
+                          </div>
+                          <div style={{ fontSize:"0.88rem", fontWeight:800, color:C.orange, marginRight:8 }}>{fmt(totalG)}</div>
+                          <span style={{ color:C.gray, fontSize:"0.72rem" }}>{aberto?"▲":"▼"}</span>
                         </div>
-                        <select value={editandoFixo.cartao||""} onChange={e=>setEditandoFixo(x=>({...x,cartao:e.target.value}))} style={inp()}>
-                          <option value="">Sem cartão (opcional)</option>
-                          {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
-                        </select>
-                        <div style={{ display:"flex", gap:8 }}>
-                          <button onClick={salvarFixo} style={{ flex:2,...btnPri,padding:"9px" }}>✓ Salvar</button>
-                          <button onClick={()=>setEditandoFixo(null)} style={{ flex:1,padding:"9px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.gray,cursor:"pointer",fontFamily:"inherit" }}>Cancelar</button>
-                        </div>
-                      </div>
-                    </div>
-                  ):(
-                    <div style={{ padding:"11px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div>
-                        <div style={{ fontSize:"0.84rem", fontWeight:500, color:C.grayLight }}>📌 {f.nome}</div>
-                        {f.cartao&&(
-                          <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:3 }}>
-                            <CartaoLogo grupo={f.cartao} cartoes={cartoes} size={14}/>
-                            <span style={{ fontSize:"0.62rem", color:C.gray }}>{f.cartao}</span>
+                        {aberto && (
+                          <div style={{ padding:"0 12px 12px" }}>
+                            <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:8, display:"flex", flexDirection:"column", gap:5 }}>
+                              {itens.map(f=>(
+                                <div key={f.id} style={{ background:C.surface, borderRadius:9, border:`1px solid ${C.border}`, overflow:"hidden" }}>
+                                  {editandoFixo?.id===f.id?(
+                                    <div style={{ padding:"11px" }}>
+                                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                                          <input value={editandoFixo.nome} onChange={e=>setEditandoFixo(x=>({...x,nome:e.target.value}))} style={inp()}/>
+                                          <input type="number" value={editandoFixo.valor} onChange={e=>setEditandoFixo(x=>({...x,valor:e.target.value}))} style={inp()}/>
+                                        </div>
+                                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                                          <select value={editandoFixo.cartao||""} onChange={e=>setEditandoFixo(x=>({...x,cartao:e.target.value}))} style={inp()}>
+                                            <option value="">Sem cartão</option>
+                                            {cartoes.map(x=><option key={x.nome} value={x.nome}>{x.nome}</option>)}
+                                          </select>
+                                          <select value={editandoFixo.categoria||""} onChange={e=>setEditandoFixo(x=>({...x,categoria:e.target.value}))} style={inp()}>
+                                            <option value="">Categoria</option>
+                                            {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
+                                          </select>
+                                        </div>
+                                        <div style={{ display:"flex", gap:8 }}>
+                                          <button onClick={salvarFixo} style={{ flex:2,...btnPri,padding:"9px" }}>✓ Salvar</button>
+                                          <button onClick={()=>setEditandoFixo(null)} style={{ flex:1,padding:"9px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.gray,cursor:"pointer",fontFamily:"inherit" }}>Cancelar</button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ):(
+                                    <div style={{ padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                                      <div style={{ flex:1, minWidth:0 }}>
+                                        <div style={{ fontSize:"0.82rem", fontWeight:500, color:C.grayLight }}>{f.nome}</div>
+                                        {f.categoria&&(()=>{ const cat=categorias.find(x=>x.id===f.categoria); return cat?<span style={{ fontSize:"0.6rem", color:cat.cor, background:cat.cor+"22", borderRadius:20, padding:"1px 6px", marginTop:3, display:"inline-block" }}>{cat.emoji} {cat.nome}</span>:null; })()}
+                                      </div>
+                                      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                                        <span style={{ fontSize:"0.85rem", color:C.orange, fontWeight:700 }}>{fmt(f.valor)}</span>
+                                        <button onClick={()=>setEditandoFixo({...f})} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
+                                        <button onClick={()=>setConfirmRemover({tipo:"fixo",id:f.id,nome:f.nome})} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <span style={{ fontSize:"0.88rem", color:C.orange, fontWeight:700 }}>{fmt(f.valor)}</span>
-                        <button onClick={()=>setEditandoFixo({...f})} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
-                        <button onClick={()=>setFixos(x=>x.filter(i=>i.id!==f.id))} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {fixos.length>0&&(
-                <div style={{ background:C.surface, borderRadius:10, padding:"11px 14px", display:"flex", justifyContent:"space-between", marginTop:4, border:`1px solid ${C.border}` }}>
+                    );
+                  });
+                })()}
+                <div style={{ background:C.surface, borderRadius:10, padding:"11px 14px", display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}`, marginTop:4 }}>
                   <span style={{ fontSize:"0.84rem", fontWeight:700, color:C.grayLight }}>Total/mês</span>
                   <span style={{ fontSize:"0.88rem", color:C.orange, fontWeight:800 }}>{fmt(totalFixos)}</span>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -711,7 +1212,7 @@ export default function App() {
         {!showEditar && aba==="gastos"&&(
           <GastosDoMes
             extras={extras} setExtras={setExtras}
-            cartoes={cartoes} MESES={MESES}
+            cartoes={cartoes} categorias={categorias} MESES={MESES}
             editandoExtra={editandoExtra} setEditandoExtra={setEditandoExtra}
             salvarExtra={salvarExtra} C={C} inp={inp} btnPri={btnPri}
             CartaoLogo={CartaoLogo}
@@ -773,7 +1274,8 @@ export default function App() {
                     <button key={o.tipo} onClick={()=>{
                       const res = calcularAmortizacao(parcelasComRestante, parseFloat(amorValor), o.tipo);
                       setAmorResultado({ ...res, tipo:o.tipo, cor:o.cor });
-                      setAmorStep("resultado");
+                      registrarEvento("simulacao_amortizacao", { tipo: o.tipo, valor: parseFloat(amorValor)||0 });
+                    setAmorStep("resultado");
                     }} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"18px 16px", cursor:"pointer", textAlign:"left", fontFamily:"inherit", display:"flex", gap:14, alignItems:"flex-start" }}>
                       <div style={{ width:48, height:48, borderRadius:14, background:`${o.cor}22`, border:`1px solid ${o.cor}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.4rem", flexShrink:0 }}>{o.icon}</div>
                       <div>
@@ -790,61 +1292,107 @@ export default function App() {
             {amorStep==="resultado"&&amorResultado&&(
               <div style={{ animation:"fadeIn 0.3s ease" }}>
                 <button onClick={()=>{setAmorStep("menu");setAmorValor("");setAmorResultado(null);}} style={{ background:"none", border:"none", color:C.gray, cursor:"pointer", fontSize:"0.8rem", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", gap:4, padding:0 }}>← Nova simulação</button>
-                <div style={{ background:C.card, borderRadius:16, border:`1px solid ${amorResultado.cor}44`, overflow:"hidden" }}>
-                  <div style={{ height:4, background:`linear-gradient(90deg,${amorResultado.cor},${amorResultado.cor}44)` }}/>
-                  <div style={{ padding:"16px" }}>
-                    <div style={{ marginBottom:14 }}>
-                      <div style={{ fontSize:"0.88rem", fontWeight:800, color:amorResultado.cor, marginBottom:2 }}>
-                        {amorResultado.tipo==="prazo"?"⏱️ Melhor opção para reduzir prazo":"💸 Melhor opção para liberar valor mensal"}
-                      </div>
-                      <div style={{ fontSize:"0.65rem", color:C.gray }}>Baseado nas suas parcelas cadastradas</div>
-                    </div>
 
-                    <div style={{ background:C.surface, borderRadius:10, padding:"12px 14px", marginBottom:14, border:`1px solid ${C.border}` }}>
-                      <div style={{ fontSize:"0.65rem", color:C.gray, marginBottom:4 }}>Parcela recomendada</div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <CartaoLogo grupo={amorResultado.parcela?.grupo} cartoes={cartoes} size={28}/>
-                        <div>
-                          <div style={{ fontSize:"0.88rem", fontWeight:700, color:C.grayLight }}>{amorResultado.parcela?.nome}</div>
-                          <div style={{ fontSize:"0.68rem", color:C.gray }}>{amorResultado.parcela?.grupo} · {fmt(amorResultado.parcela?.valor)}/mês</div>
+                {amorResultado.semAcao ? (
+                  <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.orange}44`, padding:20, textAlign:"center" }}>
+                    <div style={{ fontSize:"2rem", marginBottom:12 }}>🤔</div>
+                    <div style={{ fontSize:"0.95rem", fontWeight:800, color:C.grayLight, marginBottom:8 }}>Valor insuficiente</div>
+                    <div style={{ fontSize:"0.8rem", color:C.gray, lineHeight:1.6 }}>
+                      Com {fmt(amorResultado.valorDisponivel)} não dá para abater nenhuma parcela inteira.
+                      A menor parcela que você tem é de <strong style={{color:C.grayLight}}>{fmt(amorResultado.menorParcela)}</strong>.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Resumo */}
+                    <div style={{ background:C.card, borderRadius:16, border:`1px solid ${amorResultado.tipo==="prazo"?C.green:C.primary}44`, overflow:"hidden", marginBottom:12 }}>
+                      <div style={{ height:4, background:`linear-gradient(90deg,${amorResultado.tipo==="prazo"?C.green:C.primary},${amorResultado.tipo==="prazo"?C.green:C.primary}44)` }}/>
+                      <div style={{ padding:16 }}>
+                        <div style={{ fontSize:"0.88rem", fontWeight:800, color:amorResultado.tipo==="prazo"?C.green:C.primary, marginBottom:3 }}>
+                          {amorResultado.tipo==="prazo" ? "⏱️ Plano para terminar antes" : "💸 Plano para sobrar mais por mês"}
                         </div>
+                        <div style={{ fontSize:"0.68rem", color:C.gray, marginBottom:14 }}>
+                          Abatendo {amorResultado.totalParcelasAbatidas} parcela(s) em {amorResultado.acoes.length} dívida(s)
+                        </div>
+
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                          {[
+                            { l:"Você tem", v:fmt(amorResultado.valorDisponivel), c:C.grayLight },
+                            { l:"Vai usar", v:fmt(amorResultado.totalUsado), c:C.primary, d:true },
+                            { l:"Parcelas abatidas", v:`${amorResultado.totalParcelasAbatidas}x`, c:amorResultado.tipo==="prazo"?C.green:C.grayLight, d:amorResultado.tipo==="prazo" },
+                            amorResultado.tipo==="mensal"
+                              ? { l:"Libera por mês", v:fmt(amorResultado.liberaPorMes), c:C.green, d:true }
+                              : { l:"Meses a menos", v:`${amorResultado.mesesEconomizados}`, c:C.green, d:true },
+                          ].map(x=>(
+                            <div key={x.l} style={{ background:C.surface, borderRadius:9, padding:"9px 11px", border:`1px solid ${x.d?(amorResultado.tipo==="prazo"?C.green:C.primary)+"44":C.border}` }}>
+                              <div style={{ fontSize:"0.6rem", color:C.gray, marginBottom:2 }}>{x.l}</div>
+                              <div style={{ fontSize:"0.88rem", fontWeight:800, color:x.c }}>{x.v}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {amorResultado.sobra > 0 && (
+                          <div style={{ marginTop:10, background:`${C.yellow}12`, border:`1px solid ${C.yellow}33`, borderRadius:9, padding:"9px 11px", fontSize:"0.74rem", color:C.gray, lineHeight:1.5 }}>
+                            💰 Sobram <strong style={{color:C.yellow}}>{fmt(amorResultado.sobra)}</strong> do valor informado — não dá para abater mais nenhuma parcela inteira.
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
-                      {amorResultado.tipo==="prazo"?[
-                        { l:"Valor a amortizar", v:fmt(amorResultado.valorAmort), c:C.grayLight, d:true },
-                        { l:"Parcelas eliminadas", v:`${amorResultado.parcelasEliminadas}x`, c:amorResultado.cor, d:true },
-                        { l:"Parcelas antes", v:`${amorResultado.restantesAntes}x`, c:C.gray },
-                        { l:"Parcelas depois", v:`${amorResultado.restantesDepois}x`, c:C.green },
-                        { l:"Total antes", v:fmt(amorResultado.totalDevido), c:C.gray },
-                        { l:"Total depois", v:fmt(amorResultado.novoTotal), c:C.green },
-                      ]:[
-                        { l:"Valor a amortizar", v:fmt(amorResultado.valorAmort), c:C.grayLight, d:true },
-                        { l:"Economia/mês est.", v:fmt(amorResultado.economiaMensal), c:amorResultado.cor, d:true },
-                        { l:"Total antes", v:fmt(amorResultado.totalDevido), c:C.gray },
-                        { l:"Total depois", v:fmt(amorResultado.novoTotal), c:C.green },
-                        { l:"Parcelas restantes", v:`${amorResultado.restantesDepois}x`, c:C.gray },
-                        { l:"Parcela/mês atual", v:fmt(amorResultado.parcela?.valor), c:C.orange },
-                      ].map(({l,v,c,d})=>(
-                        <div key={l} style={{ background:C.surface, borderRadius:8, padding:"9px 10px", border:`1px solid ${d?amorResultado.cor+"44":C.border}` }}>
-                          <div style={{ fontSize:"0.6rem", color:C.gray, marginBottom:2 }}>{l}</div>
-                          <div style={{ fontSize:"0.85rem", fontWeight:d?800:600, color:c }}>{v}</div>
+                    {/* Plano de ação */}
+                    <div style={{ fontSize:"0.66rem", color:C.gray, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:9 }}>O que fazer</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+                      {amorResultado.acoes.map((a,idx)=>(
+                        <div key={a.id} style={{ background:C.card, borderRadius:13, border:`1px solid ${a.quitouTudo?C.green+"44":C.border}`, padding:"13px 14px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:9 }}>
+                            <div style={{ width:22, height:22, borderRadius:"50%", background:C.surface, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"0.62rem", fontWeight:800, color:C.gray, flexShrink:0 }}>{idx+1}</div>
+                            <CartaoLogo grupo={a.grupo} cartoes={cartoes} size={26}/>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:"0.84rem", fontWeight:700, color:C.grayLight }}>{a.nome}</div>
+                              <div style={{ fontSize:"0.63rem", color:C.gray }}>{a.grupo} · {fmt(a.valorParcela)}/mês</div>
+                            </div>
+                            {a.quitouTudo && <span style={{ fontSize:"0.6rem", fontWeight:800, color:C.green, background:`${C.green}1a`, borderRadius:20, padding:"3px 8px", flexShrink:0 }}>QUITA</span>}
+                          </div>
+
+                          <div style={{ background:C.surface, borderRadius:9, padding:"10px 12px", fontSize:"0.78rem", color:C.grayLight, lineHeight:1.6 }}>
+                            {a.quitouTudo ? (
+                              <>Pague <strong style={{color:C.primary}}>{fmt(a.gasto)}</strong> e quite as <strong>{a.abatidas} parcelas</strong> restantes. Essa dívida acaba agora e libera <strong style={{color:C.green}}>{fmt(a.valorParcela)}</strong> todo mês.</>
+                            ) : (
+                              <>Pague <strong style={{color:C.primary}}>{fmt(a.gasto)}</strong> e adiante <strong>{a.abatidas} de {a.restantes} parcelas</strong>. Ainda restarão <strong style={{color:C.orange}}>{a.sobramDepois} parcelas</strong> de {fmt(a.valorParcela)}.</>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
 
-                    <div style={{ background:C.surface, borderRadius:10, padding:"12px 14px", border:`1px solid ${C.border}`, borderLeft:`3px solid ${amorResultado.cor}` }}>
-                      <div style={{ fontSize:"0.65rem", color:C.gray, marginBottom:4 }}>💡 Dica</div>
-                      <p style={{ fontSize:"0.78rem", color:C.grayLight, margin:0, lineHeight:1.5 }}>
+                    {/* Antes e depois */}
+                    <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:16, marginBottom:14 }}>
+                      <div style={{ fontSize:"0.66rem", color:C.gray, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:12 }}>Antes e depois</div>
+                      {[
+                        { l:"Dívida total", a:fmt(amorResultado.dividaAntes), d:fmt(amorResultado.dividaDepois) },
+                        { l:"Último pagamento em", a:`${amorResultado.maiorPrazoAntes} meses`, d:`${amorResultado.maiorPrazoDepois} meses` },
+                      ].map((r,i,arr)=>(
+                        <div key={r.l} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderBottom: i<arr.length-1?`1px solid ${C.border}`:"none" }}>
+                          <span style={{ fontSize:"0.76rem", color:C.gray, flex:1 }}>{r.l}</span>
+                          <span style={{ fontSize:"0.78rem", color:C.gray, textDecoration:"line-through", opacity:0.7 }}>{r.a}</span>
+                          <span style={{ color:C.gray, fontSize:"0.7rem" }}>→</span>
+                          <span style={{ fontSize:"0.82rem", fontWeight:800, color:C.green }}>{r.d}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Dica */}
+                    <div style={{ background:C.surface, borderRadius:12, padding:"12px 14px", border:`1px solid ${C.border}`, borderLeft:`3px solid ${amorResultado.tipo==="prazo"?C.green:C.primary}` }}>
+                      <div style={{ fontSize:"0.65rem", color:C.gray, marginBottom:4 }}>💡 Por que essa ordem?</div>
+                      <p style={{ fontSize:"0.77rem", color:C.grayLight, margin:0, lineHeight:1.55 }}>
                         {amorResultado.tipo==="prazo"
-                          ? `Amortizando ${fmt(amorResultado.valorAmort)} nessa parcela, você elimina ${amorResultado.parcelasEliminadas} mês(es) de pagamento e fica livre dessa dívida mais cedo.`
-                          : `Amortizando ${fmt(amorResultado.valorAmort)}, você reduz o saldo devedor e pode negociar uma parcela menor com ${amorResultado.parcela?.grupo}, liberando mais espaço no seu orçamento mensal.`
-                        }
+                          ? "Priorizamos as dívidas que ainda vão durar mais tempo, para encurtar o prazo até você ficar livre de tudo."
+                          : "Priorizamos as parcelas de maior valor mensal, porque cada uma quitada devolve mais dinheiro ao seu orçamento todo mês."}
                       </p>
                     </div>
-                  </div>
-                </div>
+                  </>
+                )}
+
                 <button onClick={()=>{setAmorStep("menu");setAmorValor("");setAmorResultado(null);}} style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.gray, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>
                   Fazer outra simulação
                 </button>
@@ -855,22 +1403,24 @@ export default function App() {
       </div>
 
       {/* BARRA FLUTUANTE */}
-      <div style={{ position:"fixed", bottom:16, left:"50%", transform:"translateX(-50%)", background:dark?"rgba(22,27,34,0.95)":"rgba(255,255,255,0.95)", backdropFilter:"blur(20px)", borderRadius:28, border:`1px solid ${C.border}`, boxShadow:"0 8px 32px rgba(0,0,0,0.2)", display:"flex", zIndex:200, padding:"6px 6px", gap:1, width:"calc(100% - 32px)", maxWidth:560 }}>
+      <div style={{ position:"fixed", bottom:16+vvOffset, left:"50%", transform:"translateX(-50%)", willChange:"transform", background:dark?"rgba(22,27,34,0.95)":"rgba(255,255,255,0.95)", backdropFilter:"blur(20px)", borderRadius:28, border:`1px solid ${C.border}`, boxShadow:"0 8px 32px rgba(0,0,0,0.2)", display:"flex", zIndex:200, padding:"6px 6px", gap:1, width:"calc(100% - 32px)", maxWidth:560 }}>
         {[
           { k:"projecao", icon:"📊", label:"Projeção" },
           { k:"parcelas", icon:"🧾", label:"Parcelas" },
-          { k:"cartoes", icon:"💳", label:"Cartões" },
+          { k:"cadastros", icon:"⚙️", label:"Cadastros" },
           { k:"fixos", icon:"📌", label:"Fixos" },
           { k:"gastos", icon:"🗓️", label:"Gastos" },
           { k:"receita", icon:"💰", label:"Receita" },
           { k:"amortizacao", icon:"💸", label:"Simular" },
         ].map(({k,icon,label})=>(
-          <button key={k} onClick={()=>{ setShowEditar(false); setAba(k); }} style={{ flex:1, padding:"8px 2px 6px", border:"none", cursor:"pointer", fontFamily:"inherit", display:"flex", flexDirection:"column", alignItems:"center", gap:2, borderRadius:20, background:aba===k&&!showEditar?C.primary+"22":"transparent", color:aba===k&&!showEditar?C.primaryLight:C.gray, transition:"all 0.2s" }}>
+          <button key={k} onClick={()=>irParaAba(k)} style={{ flex:1, padding:"8px 2px 6px", border:"none", cursor:"pointer", fontFamily:"inherit", display:"flex", flexDirection:"column", alignItems:"center", gap:2, borderRadius:20, background:aba===k&&!showEditar?C.primary+"22":"transparent", color:aba===k&&!showEditar?C.primaryLight:C.gray, transition:"all 0.2s" }}>
             <span style={{ fontSize:"1rem" }}>{icon}</span>
             <span style={{ fontSize:"0.52rem", fontWeight:aba===k&&!showEditar?700:400 }}>{label}</span>
           </button>
         ))}
       </div>
+
+      {TelaUpgrade}
     </div>
   );
 }

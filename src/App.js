@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
@@ -226,6 +226,8 @@ export default function App() {
   const [cartoes, setCartoes] = useState([]);
   const [loadStatus, setLoadStatus] = useState("loading");
   const [modoSeguranca, setModoSeguranca] = useState(false);
+  const dadosBrutosCarregados = useRef(null); // snapshot exato do que veio do Firestore ao entrar
+  const primeiroSalvamentoDaSessao = useRef(true);
   const [saveStatus, setSaveStatus] = useState("idle");
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
@@ -372,6 +374,8 @@ export default function App() {
       try {
         setUser(u);
         if (u) {
+          primeiroSalvamentoDaSessao.current = true;
+          dadosBrutosCarregados.current = null;
           setParcelas([]);
           setFixos([]);
           setExtras([]);
@@ -400,6 +404,8 @@ export default function App() {
               // antes de qualquer processamento/migração local. Existe independente de qualquer
               // bug que venha a acontecer depois nesta sessão.
               setDoc(doc(db,"usuarios",u.uid,"backups",`carregamento_${new Date().toISOString()}`), d).catch(()=>{});
+
+              dadosBrutosCarregados.current = d;
 
               if (d.parcelas) setParcelas(d.parcelas);
               if (d.fixos) setFixos(d.fixos);
@@ -468,6 +474,27 @@ export default function App() {
   const handleSave = useCallback(async (parc,fix,ext,sal,extRec,carts,prefs)=>{
     if (!auth.currentUser) return;
     if (modoSeguranca) return; // trava: nunca sobrescrever com estado que pode estar incompleto
+
+    // TRAVA DO PRIMEIRO SALVAMENTO: na primeiríssima gravação da sessão, é fisicamente
+    // impossível o usuário ter esvaziado categorias inteiras de propósito (não deu tempo).
+    // Se isso aconteceria, é sinal de bug de carregamento — bloqueia e entra em modo de segurança
+    // em vez de escrever por cima dos dados reais.
+    if (primeiroSalvamentoDaSessao.current) {
+      primeiroSalvamentoDaSessao.current = false;
+      const brutos = dadosBrutosCarregados.current;
+      if (brutos) {
+        const esvaziou = (campoBruto, novoValor) => Array.isArray(campoBruto) && campoBruto.length > 0 && Array.isArray(novoValor) && novoValor.length === 0;
+        const suspeito = esvaziou(brutos.parcelas, parc) || esvaziou(brutos.fixos, fix) || esvaziou(brutos.extras, ext) ||
+          esvaziou(brutos.cartoes, carts) || esvaziou(brutos.extrasReceita, extRec) ||
+          (Number(brutos.salario) > 0 && Number(sal) === 0);
+        if (suspeito) {
+          registrarErro(new Error("Primeira gravação da sessão esvaziaria dados existentes — bloqueado"), { origem: 'trava_primeiro_salvamento', uid: auth.currentUser.uid });
+          setModoSeguranca(true);
+          return;
+        }
+      }
+    }
+
     setSaveStatus("saving");
     try {
       const payload = {

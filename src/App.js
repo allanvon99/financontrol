@@ -989,7 +989,10 @@ export default function App() {
           <div style={{ animation:"fadeIn 0.25s ease" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
               <h2 style={{ fontSize:"0.95rem", fontWeight:700, margin:0, color:C.grayLight }}>Parcelas</h2>
-              <button onClick={()=>setShowNovaParcela(!showNovaParcela)} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
+              <button onClick={()=>{
+                if(!showNovaParcela && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
+                setShowNovaParcela(!showNovaParcela);
+              }} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
                 {showNovaParcela?"✕ Fechar":"+ Nova parcela"}
               </button>
             </div>
@@ -1192,6 +1195,7 @@ export default function App() {
             categorias={categorias} setCategorias={setCategorias}
             saudeConfig={saudeConfig} setSaudeConfig={setSaudeConfig}
             dark={dark}
+            planoAtivo={planoAtualObj} podeAdicionar={podeAdicionar} setShowUpgrade={setShowUpgrade}
           />
         )}
 

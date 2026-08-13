@@ -99,7 +99,7 @@ export default function Cadastros({ cartoes, setCartoes, categorias, setCategori
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <div style={{ fontSize:"0.72rem", color:C.textSub }}>{cartoes.length} cartão(ões) cadastrado(s)</div>
-            <button onClick={()=>setShowFormCartao(true)} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>+ Novo cartão</button>
+            <button onClick={()=>{ if(!podeAdicionar(planoAtivo,"cartoes",cartoes.length)){ setShowUpgrade("cartoes"); return; } setShowFormCartao(true); }} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>+ Novo cartão</button>
           </div>
           {showFormCartao && (
             <div style={{ background:C.card, borderRadius:14, padding:16, border:`1px solid ${C.primary}55`, marginBottom:14 }}>
@@ -132,7 +132,7 @@ export default function Cadastros({ cartoes, setCartoes, categorias, setCategori
             <div style={{ textAlign:"center", color:C.textSub, padding:"40px 0" }}>
               <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>💳</p>
               <p style={{ fontSize:"0.85rem" }}>Nenhum cartão cadastrado</p>
-              <button onClick={()=>setShowFormCartao(true)} style={{ ...btnPri, marginTop:12 }}>+ Adicionar primeiro cartão</button>
+              <button onClick={()=>{ if(!podeAdicionar(planoAtivo,"cartoes",cartoes.length)){ setShowUpgrade("cartoes"); return; } setShowFormCartao(true); }} style={{ ...btnPri, marginTop:12 }}>+ Adicionar primeiro cartão</button>
             </div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>

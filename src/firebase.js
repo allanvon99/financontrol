@@ -13,4 +13,5 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+auth.languageCode = "pt-BR"; // emails de verificação/redefinição de senha saem em português
 export const db = getFirestore(app);

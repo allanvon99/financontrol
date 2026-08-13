@@ -586,7 +586,7 @@ export default function App() {
   const setCartoesComLimite = (atualizador) => {
     setCartoes(atual => {
       const novo = typeof atualizador === "function" ? atualizador(atual) : atualizador;
-      if (Array.isArray(novo) && novo.length > atual.length && !podeAdicionar(planoAtivo, "cartoes", atual.length)) {
+      if (Array.isArray(novo) && novo.length > atual.length && !podeAdicionar(planoAtualObj, "cartoes", atual.length)) {
         setShowUpgrade("cartoes");
         return atual;
       }
@@ -691,9 +691,9 @@ export default function App() {
     if (onboardingConcluido && !guiasVistos[k]) setGuiaAtivo(k);
   };
 
-  const salvarFixo = ()=>{ if(!editandoFixo?.nome||!editandoFixo?.valor)return; const eh_novo = !fixos.some(f=>f.id===editandoFixo.id); if(eh_novo && !podeAdicionar(planoAtivo,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(p=>p.map(f=>f.id===editandoFixo.id?{...editandoFixo,valor:parseFloat(editandoFixo.valor)}:f)); setEditandoFixo(null); };
+  const salvarFixo = ()=>{ if(!editandoFixo?.nome||!editandoFixo?.valor)return; const eh_novo = !fixos.some(f=>f.id===editandoFixo.id); if(eh_novo && !podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(p=>p.map(f=>f.id===editandoFixo.id?{...editandoFixo,valor:parseFloat(editandoFixo.valor)}:f)); setEditandoFixo(null); };
   const salvarExtra = ()=>{ if(!editandoExtra?.nome||!editandoExtra?.valor)return; setExtras(p=>p.map(e=>e.id===editandoExtra.id?{...editandoExtra,valor:parseFloat(editandoExtra.valor)}:e)); setEditandoExtra(null); };
-  const salvarParcela = ()=>{ if(!editandoParcela?.nome||!editandoParcela?.valor)return; const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id); if(eh_novo && !podeAdicionar(planoAtivo,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; } setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:parseFloat(editandoParcela.valor),parcelas:parseInt(editandoParcela.parcelas),parcelasOriginal:parseInt(editandoParcela.parcelas)}:x)); setEditandoParcela(null); };
+  const salvarParcela = ()=>{ if(!editandoParcela?.nome||!editandoParcela?.valor)return; const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id); if(eh_novo && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; } setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:parseFloat(editandoParcela.valor),parcelas:parseInt(editandoParcela.parcelas),parcelasOriginal:parseInt(editandoParcela.parcelas)}:x)); setEditandoParcela(null); };
 
   if (authLoading||loadStatus==="loading") return (
     <div style={{ minHeight:"100vh", background:CORES.bg, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
@@ -1018,7 +1018,7 @@ export default function App() {
                   <button onClick={()=>{
                     if(!novaParc.nome||!novaParc.valor||!novaParc.parcelas||!novaParc.grupo)return;
                     const dataInicio = novaParc.dataInicio ? new Date(novaParc.dataInicio).toISOString() : new Date().toISOString();
-                    if(!podeAdicionar(planoAtivo,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
+                    if(!podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
                     setParcelas(p=>[...p,{
                       ...novaParc,
                       id:Date.now(),

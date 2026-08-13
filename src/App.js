@@ -283,6 +283,7 @@ export default function App() {
   const [sobrenomeUsuario, setSobrenomeUsuario] = useState("");
   const [planosConfig, setPlanosConfig] = useState(PLANOS_PADRAO);
   const [criadoEm, setCriadoEm] = useState(null);
+  const [trialUsadoAnteriormente, setTrialUsadoAnteriormente] = useState(false);
   const [planoDb, setPlanoDb] = useState("free");
   const [showUpgrade, setShowUpgrade] = useState(null);
   const [abaContaInicial, setAbaContaInicial] = useState(null); // "cartoes" | "parcelas" | "fixos" | null
@@ -440,6 +441,7 @@ export default function App() {
           if (d.nome) setNomeUsuario(d.nome);
           if (d.sobrenome) setSobrenomeUsuario(d.sobrenome);
           if (d.criadoEm) setCriadoEm(d.criadoEm?.toDate ? d.criadoEm.toDate() : new Date(d.criadoEm));
+          setTrialUsadoAnteriormente(d.trialUsadoAnteriormente === true);
           if (d.plano) setPlanoDb(d.plano);
           setNotifLidas(d.notifLidas || {});
           setOnboardingConcluido(d.onboardingConcluido === true);
@@ -579,7 +581,7 @@ export default function App() {
   const saveBtnStyle = { display:"inline-flex", alignItems:"center", gap:6, border:"none", borderRadius:8, color:"#fff", padding:"7px 14px", fontSize:"0.78rem", fontWeight:700, cursor:saveStatus==="saving"?"not-allowed":"pointer", fontFamily:"inherit", transition:"all 0.3s", background:saveStatus==="saved"?"#1a4a2e":saveStatus==="error"?"#4a1a1a":`linear-gradient(135deg,#1d6fa4,#2188c9)`, opacity:saveStatus==="saving"?0.75:1 };
 
   const trialFimCalculado = criadoEm ? new Date(criadoEm.getTime() + 30*24*60*60*1000) : null;
-  const trialAtivo = trialFimCalculado ? trialFimCalculado > new Date() : false;
+  const trialAtivo = !trialUsadoAnteriormente && trialFimCalculado ? trialFimCalculado > new Date() : false;
   const planoAtivo = (planoDb === "pro" || trialAtivo) ? "pro" : "free";
   const planoAtualObj = planosConfig[planoAtivo];
   const diasTrialRestantes = trialAtivo ? Math.ceil((trialFimCalculado - new Date()) / 86400000) : 0;

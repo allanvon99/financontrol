@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { auth, db } from "./firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { POLITICA_PRIVACIDADE, TERMOS_USO, VERSAO_DOCS } from "./legal";
 
 const DARK = {
@@ -58,14 +58,28 @@ export default function Login() {
         await signInWithEmailAndPassword(auth, form.email, form.senha);
       } else {
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.senha);
+
+        // Anti-fraude de trial: verifica se esse email já teve uma conta antes
+        // (o registro sobrevive mesmo se a conta for apagada e recriada).
+        const emailKey = form.email.trim().toLowerCase();
+        const trialRef = doc(db, "trialsUsados", emailKey);
+        const trialSnap = await getDoc(trialRef).catch(()=>null);
+        const jaTeveTrial = !!trialSnap?.exists();
+
         await setDoc(doc(db, "usuarios", cred.user.uid), {
           nome: form.nome.trim(),
           sobrenome: form.sobrenome.trim(),
           criadoEm: serverTimestamp(),
           onboardingConcluido: false,
           plano: "free",
+          trialUsadoAnteriormente: jaTeveTrial,
           termosAceitos: { versao: VERSAO_DOCS, aceitoEm: new Date().toISOString() },
         }, { merge: true });
+
+        if (!jaTeveTrial) {
+          await setDoc(trialRef, { primeiraCriacao: serverTimestamp() }).catch(()=>{});
+        }
+
         // Dispara o email de verificação em segundo plano — nunca bloqueia nem atrasa o cadastro,
         // mesmo que o envio falhe (ex: limite de envio do Firebase atingido).
         sendEmailVerification(cred.user).catch(()=>{});

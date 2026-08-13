@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { auth, db } from "./firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, sendEmailVerification } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import Login from "./Login";
 import { ModalPerfil, TelaEditar } from "./Profile";
@@ -226,6 +226,7 @@ export default function App() {
   const [cartoes, setCartoes] = useState([]);
   const [loadStatus, setLoadStatus] = useState("loading");
   const [modoSeguranca, setModoSeguranca] = useState(false);
+  const [avisoEmailFechado, setAvisoEmailFechado] = useState(false);
   const dadosBrutosCarregados = useRef(null); // snapshot exato do que veio do Firestore ao entrar
   const primeiroSalvamentoDaSessao = useRef(true);
   const [saveStatus, setSaveStatus] = useState("idle");
@@ -771,6 +772,18 @@ export default function App() {
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-thumb{background:#21262d;border-radius:4px}
       `}</style>
+
+      {/* Aviso de email não confirmado — nunca bloqueia, só lembra */}
+      {user && !user.emailVerified && !avisoEmailFechado && (
+        <div style={{ background:C.orange+"20", borderBottom:`1px solid ${C.orange}55`, padding:"9px 14px", display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:"0.78rem", color:C.orange, flex:1 }}>
+            📧 Confirme seu email pra garantir acesso caso precise recuperar a senha.
+          </span>
+          <button onClick={()=>{ sendEmailVerification(user).catch(()=>{}); setAvisoEmailFechado(true); }}
+            style={{ background:"none", border:`1px solid ${C.orange}`, borderRadius:6, color:C.orange, padding:"4px 8px", fontSize:"0.68rem", cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>Reenviar</button>
+          <button onClick={()=>setAvisoEmailFechado(true)} style={{ background:"none", border:"none", color:C.orange, cursor:"pointer", fontSize:"0.9rem", padding:"2px" }}>✕</button>
+        </div>
+      )}
 
       {/* Modal confirmação remoção */}
       {confirmRemover && (

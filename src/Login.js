@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { auth, db } from "./firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { POLITICA_PRIVACIDADE, TERMOS_USO, VERSAO_DOCS } from "./legal";
 
@@ -66,6 +66,9 @@ export default function Login() {
           plano: "free",
           termosAceitos: { versao: VERSAO_DOCS, aceitoEm: new Date().toISOString() },
         }, { merge: true });
+        // Dispara o email de verificação em segundo plano — nunca bloqueia nem atrasa o cadastro,
+        // mesmo que o envio falhe (ex: limite de envio do Firebase atingido).
+        sendEmailVerification(cred.user).catch(()=>{});
       }
     } catch (e) {
       setErro(e.code === "auth/invalid-credential" ? "Email ou senha incorretos" :

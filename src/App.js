@@ -601,14 +601,18 @@ export default function App() {
       <div onClick={e=>e.stopPropagation()} style={{ background: dark ? "#1a1a2e" : "#fff", borderRadius:16, padding:24, maxWidth:340, textAlign:"center" }}>
         <div style={{ fontSize:"1.6rem", marginBottom:8 }}>🔒</div>
         <div style={{ fontSize:"1rem", fontWeight:800, marginBottom:8, color: dark ? "#fff" : "#111" }}>
-          {showUpgrade === "simulador" ? "Recurso exclusivo do plano Pro" : "Limite do plano gratuito atingido"}
+          {showUpgrade === "simulador" || showUpgrade === "projecao" ? "Recurso exclusivo do plano Pro" : "Limite do plano gratuito atingido"}
         </div>
         <div style={{ fontSize:"0.85rem", color: dark ? "#aaa" : "#555", marginBottom:16, lineHeight:1.5 }}>
           {showUpgrade === "simulador"
             ? "O simulador de amortização está disponível no plano Pro. Assine pra desbloquear."
+            : showUpgrade === "projecao"
+            ? `O plano gratuito mostra até ${mesMaxProjecao+1} meses de projeção. Assine o Pro para ver até ${MESES.length} meses.`
+            : showUpgrade === "extras"
+            ? "O plano gratuito permite até 5 gastos por mês. Assine o Pro para lançar sem limites."
             : "Assine o plano Pro para cadastrar sem limites, ou continue no gratuito removendo algum item existente."}
         </div>
-        <button onClick={()=>{ setShowUpgrade(null); setAba("conta"); setAbaContaInicial("plano"); }} style={{ width:"100%", padding:"12px", borderRadius:10, background:"#6366f1", color:"#fff", border:"none", fontWeight:700, marginBottom:8 }}>Ver planos</button>
+        <button onClick={()=>{ setShowUpgrade(null); setAbaConta("plano"); setTelaEspecial("conta"); }} style={{ width:"100%", padding:"12px", borderRadius:10, background:"#6366f1", color:"#fff", border:"none", fontWeight:700, marginBottom:8 }}>Ver planos</button>
         <button onClick={()=>setShowUpgrade(null)} style={{ width:"100%", padding:"10px", borderRadius:10, background:"transparent", color: dark ? "#aaa" : "#555", border:"none" }}>Agora não</button>
       </div>
     </div>
@@ -891,7 +895,7 @@ export default function App() {
             {/* MENSAL */}
             {true && (
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {projecao.map((m,i)=>{
+                {projecao.slice(0, mesMaxProjecao+1).map((m,i)=>{
                   const cor = corSobra(m.sobra,C);
                   const pct = m.receita>0?Math.max(0,Math.min(100,(m.sobra/m.receita)*100)):0;
                   const aberto = expandidosProj[i];
@@ -966,6 +970,12 @@ export default function App() {
                     </div>
                   );
                 })}
+                {mesMaxProjecao < MESES.length-1 && (
+                  <div onClick={()=>setShowUpgrade("projecao")} style={{ background:C.card, borderRadius:14, border:`1px dashed ${C.border}`, padding:"16px", textAlign:"center", cursor:"pointer" }}>
+                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.primaryLight, marginBottom:2 }}>🔒 Veja até {MESES.length} meses de projeção</div>
+                    <div style={{ fontSize:"0.72rem", color:C.gray }}>Disponível no plano Pro</div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1206,7 +1216,7 @@ export default function App() {
                     {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
                   </select>
                 </div>
-                <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:"",categoria:""}); }} style={btnPri}>Adicionar</button>
+                <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; if(!podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:"",categoria:""}); }} style={btnPri}>Adicionar</button>
               </div>
             </div>
             {fixos.length===0 ? (
@@ -1310,6 +1320,8 @@ export default function App() {
             editandoExtra={editandoExtra} setEditandoExtra={setEditandoExtra}
             salvarExtra={salvarExtra} C={C} inp={inp} btnPri={btnPri}
             CartaoLogo={CartaoLogo}
+            planoAtualObj={planoAtualObj} podeAdicionar={podeAdicionar}
+            onLimiteAtingido={()=>setShowUpgrade("extras")}
           />
         )}
 

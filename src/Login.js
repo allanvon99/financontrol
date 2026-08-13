@@ -57,6 +57,7 @@ export default function Login() {
       if (modo === "login") {
         await signInWithEmailAndPassword(auth, form.email, form.senha);
       } else {
+        try { sessionStorage.setItem("cadastroRecente", "1"); } catch {}
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.senha);
 
         // Anti-fraude de trial: verifica se esse email já teve uma conta antes

@@ -386,7 +386,11 @@ export default function App() {
           setExtrasReceita([]);
           setCartoes([]);
           try {
-            const snap = await getDoc(doc(db,"usuarios",u.uid));
+            let snap = await getDoc(doc(db,"usuarios",u.uid));
+            for (let tentativa=0; tentativa<3 && !snap.exists(); tentativa++) {
+              await new Promise(r=>setTimeout(r, 600*(tentativa+1)));
+              snap = await getDoc(doc(db,"usuarios",u.uid));
+            }
             if (snap.exists()) {
               const d = snap.data();
 
@@ -469,6 +473,7 @@ export default function App() {
           } catch(firestoreErr) {
             registrarErro(firestoreErr, { origem: 'carregar_dados' });
           }
+          try { sessionStorage.removeItem("cadastroRecente"); } catch {}
           setLoadStatus("loaded");
         }
       } catch(authErr) {
@@ -712,7 +717,7 @@ export default function App() {
     <div style={{ minHeight:"100vh", background:CORES.bg, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ width:36, height:36, border:`3px solid ${CORES.border}`, borderTop:`3px solid ${CORES.primary}`, borderRadius:"50%", animation:"spin 0.8s linear infinite" }}/>
-      <p style={{ color:CORES.gray, fontSize:"0.82rem", fontFamily:"sans-serif" }}>Carregando...</p>
+      <p style={{ color:CORES.gray, fontSize:"0.82rem", fontFamily:"sans-serif" }}>{(()=>{ try { return sessionStorage.getItem("cadastroRecente")==="1" ? "Preparando sua conta..." : "Carregando..."; } catch { return "Carregando..."; } })()}</p>
     </div>
   );
 

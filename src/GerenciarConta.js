@@ -18,7 +18,7 @@ function Bloco({ titulo, children, cor, C }) {
   );
 }
 
-export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial }) {
+export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, planoAtivo, trialAtivo, diasTrialRestantes }) {
   const user = auth.currentUser;
   const TXT = C.grayLight || C.text;
   const SUB = C.gray || C.textSub;
@@ -142,7 +142,8 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial }) {
 
   const pro = planos.pro;
   const free = planos.free;
-  const ehPro = planoUsuario === "pro";
+  const ehPro = planoAtivo === "pro" || planoUsuario === "pro";
+  const mostrarUpsell = !ehPro || trialAtivo;
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, animation:"slideIn 0.25s ease" }}>
@@ -200,7 +201,9 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial }) {
               <div style={{ minWidth:0 }}>
                 <div style={{ fontSize:"1rem", fontWeight:800, color:TXT }}>{dados.nome} {dados.sobrenome}</div>
                 <div style={{ fontSize:"0.75rem", color:SUB, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user?.email}</div>
-                <div style={{ fontSize:"0.66rem", color: ehPro ? C.primaryLight : C.green, marginTop:3 }}>● Plano {ehPro ? pro.nome : free.nome}</div>
+                <div style={{ fontSize:"0.66rem", color: ehPro ? C.primaryLight : C.green, marginTop:3 }}>
+                  ● Plano {trialAtivo ? `${pro.nome} (Trial · ${diasTrialRestantes}d)` : ehPro ? pro.nome : free.nome}
+                </div>
               </div>
             </div>
 
@@ -270,9 +273,13 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial }) {
               <div style={{ padding:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div>
                   <div style={{ fontSize:"0.66rem", color:SUB, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>Seu plano atual</div>
-                  <div style={{ fontSize:"1.15rem", fontWeight:800, color: ehPro?C.primaryLight:TXT }}>{ehPro ? pro.nome : free.nome}</div>
+                  <div style={{ fontSize:"1.15rem", fontWeight:800, color: ehPro?C.primaryLight:TXT }}>
+                    {trialAtivo ? `${pro.nome} (Trial)` : ehPro ? pro.nome : free.nome}
+                  </div>
                 </div>
-                <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, padding:"5px 12px", fontSize:"0.7rem", color:SUB, fontWeight:600 }}>Ativo</div>
+                <div style={{ background: trialAtivo ? `${C.orange}20` : C.surface, border:`1px solid ${trialAtivo?C.orange:C.border}`, borderRadius:20, padding:"5px 12px", fontSize:"0.7rem", color: trialAtivo?C.orange:SUB, fontWeight:600 }}>
+                  {trialAtivo ? `${diasTrialRestantes} dia${diasTrialRestantes===1?"":"s"} restante${diasTrialRestantes===1?"":"s"}` : "Ativo"}
+                </div>
               </div>
             </div>
 
@@ -325,14 +332,16 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial }) {
               ))}
             </div>
 
-            {!ehPro && (
+            {mostrarUpsell && (
               <>
                 <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
-                  <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:16 }}>
+                  <div style={{ background:C.card, borderRadius:14, border:`1px solid ${trialAtivo?C.orange+"55":C.border}`, padding:16 }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
                       <div>
                         <div style={{ fontSize:"0.92rem", fontWeight:800, color:TXT }}>{pro.nome} Mensal</div>
-                        <div style={{ fontSize:"0.68rem", color:SUB, marginTop:2 }}>Cancele quando quiser</div>
+                        <div style={{ fontSize:"0.68rem", color:SUB, marginTop:2 }}>
+                          {trialAtivo ? "Garanta o acesso Pro quando o trial acabar" : "Cancele quando quiser"}
+                        </div>
                       </div>
                       <div style={{ textAlign:"right" }}>
                         <div style={{ fontSize:"1.25rem", fontWeight:800, color:TXT }}>{fmtPreco(pro.precoMensal)}</div>
@@ -341,7 +350,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial }) {
                     </div>
                     <button onClick={()=>flash(setMsg,"Em breve! O pagamento está sendo integrado.")}
                       style={{ width:"100%", padding:"12px", borderRadius:11, border:"none", background:C.primary, color:"#fff", fontWeight:700, fontSize:"0.85rem", cursor:"pointer", fontFamily:"inherit" }}>
-                      Assinar plano Pro
+                      {trialAtivo ? "Assinar antes do trial acabar" : "Assinar plano Pro"}
                     </button>
                   </div>
                 </div>

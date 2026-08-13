@@ -750,6 +750,7 @@ export default function App() {
       <GerenciarConta
         C={C} onVoltar={()=>setTelaEspecial(null)} abaInicial={abaConta}
         dadosApp={{ parcelas, fixos, extras, salario, extrasReceita, cartoes, categorias, saudeConfig }}
+        planoAtivo={planoAtivo} trialAtivo={trialAtivo} diasTrialRestantes={diasTrialRestantes}
       />
     </div>
   );

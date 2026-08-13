@@ -8,11 +8,10 @@ const fmtData = (d) => {
   return dt.toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit" });
 };
 
-export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editandoExtra, setEditandoExtra, salvarExtra, C, inp, btnPri, CartaoLogo }) {
-  const now = new Date();
-  const [mesSel, setMesSel] = useState(0); // índice em MESES
+export default function GastosDoMes({ extras, setExtras, cartoes, categorias, MESES, editandoExtra, setEditandoExtra, salvarExtra, C, inp, btnPri, CartaoLogo, planoAtualObj, podeAdicionar, onLimiteAtingido }) {
+  const [mesSel, setMesSel] = useState(0);
   const [showForm, setShowForm] = useState(false);
-  const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0, cartao:"", data:"" });
+  const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", cartao:"", categoria:"", data:"" });
   const [expandidosGrupo, setExpandidosGrupo] = useState({});
 
   const toggleGrupo = (k) => setExpandidosGrupo(p=>({...p,[k]:!p[k]}));
@@ -31,7 +30,6 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
 
   const totalMes = gastosMes.reduce((s,e)=>s+Number(e.valor),0);
 
-  // Agrupa por cartão
   const grupos = {};
   gastosMes.forEach(e => {
     const key = e.cartao || "__sem_cartao__";
@@ -44,17 +42,26 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
     ...(grupos["__sem_cartao__"] ? ["__sem_cartao__"] : [])
   ];
 
+  const categoriaLabel = (id) => {
+    const cat = categorias.find(c=>c.id===id);
+    return cat ? `${cat.emoji} ${cat.nome}` : null;
+  };
+
   return (
     <div style={{ animation:"fadeIn 0.25s ease" }}>
-      {/* Header com seletor de mês */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
         <h2 style={{ fontSize:"0.95rem", fontWeight:700, margin:0, color:C.grayLight }}>Gastos do Mês</h2>
-        <button onClick={()=>setShowForm(!showForm)} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
+        <button onClick={()=>{
+          if (!showForm && podeAdicionar && !podeAdicionar(planoAtualObj, "extras", gastosMes.length)) {
+            onLimiteAtingido && onLimiteAtingido();
+            return;
+          }
+          setShowForm(!showForm);
+        }} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
           {showForm?"✕ Fechar":"+ Adicionar"}
         </button>
       </div>
 
-      {/* Seletor de mês estilo airline */}
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
         <button onClick={()=>setMesSel(m=>Math.max(0,m-1))} disabled={mesSel===0}
           style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===0?C.border:C.gray, width:32, height:32, cursor:mesSel===0?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
@@ -66,33 +73,48 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
           style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===MESES.length-1?C.border:C.gray, width:32, height:32, cursor:mesSel===MESES.length-1?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
       </div>
 
-      {/* Formulário de adicionar */}
       {showForm && (
         <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.primary}55`, marginBottom:14, animation:"fadeIn 0.2s ease" }}>
-          <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>+ Novo gasto</div>
+          <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Novo gasto em {mesAtual.label}</div>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
               <input placeholder="Descrição" value={novoExtra.nome} onChange={e=>setNovoExtra(x=>({...x,nome:e.target.value}))} style={inp()}/>
               <input type="number" placeholder="Valor (R$)" value={novoExtra.valor} onChange={e=>setNovoExtra(x=>({...x,valor:e.target.value}))} style={inp()}/>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-              <select value={novoExtra.cartao||""} onChange={e=>setNovoExtra(x=>({...x,cartao:e.target.value}))} style={inp()}>
-                <option value="">Sem cartão (opcional)</option>
-                {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
-              </select>
-              <input type="date" value={novoExtra.data||""} onChange={e=>setNovoExtra(x=>({...x,data:e.target.value}))} style={inp()}/>
+            <select value={novoExtra.cartao||""} onChange={e=>setNovoExtra(x=>({...x,cartao:e.target.value}))} style={inp()}>
+              <option value="">Sem cartão (opcional)</option>
+              {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
+            </select>
+            <div>
+              <div style={{ fontSize:"0.62rem", color:C.gray, marginBottom:3 }}>📅 Data do gasto (opcional)</div>
+              <div style={{ position:"relative", overflow:"hidden", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface }}>
+                <input type="date" value={novoExtra.data||""}
+                  onChange={e=>setNovoExtra(x=>({...x,data:e.target.value}))}
+                  style={{ width:"100%", padding:"9px 12px", background:"transparent", border:"none", color:novoExtra.data?C.grayLight:C.gray, fontSize:"0.82rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box" }}
+                />
+              </div>
             </div>
+            <select value={novoExtra.categoria||""} onChange={e=>setNovoExtra(x=>({...x,categoria:e.target.value}))} style={inp()}>
+              <option value="">Categoria (opcional)</option>
+              {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
+            </select>
             <button onClick={()=>{
               if(!novoExtra.nome||!novoExtra.valor) return;
-              setExtras(e=>[...e,{ ...novoExtra, id:Date.now(), valor:parseFloat(novoExtra.valor), mesReal:mesAtual.mes, anoReal:mesAtual.ano }]);
-              setNovoExtra({ nome:"", valor:"", cartao:"", data:"" });
+              if (podeAdicionar && !podeAdicionar(planoAtualObj, "extras", gastosMes.length)) {
+                onLimiteAtingido && onLimiteAtingido();
+                return;
+              }
+              setExtras(e=>[...e,{
+                ...novoExtra, id:Date.now(), valor:parseFloat(novoExtra.valor),
+                mesReal:mesAtual.mes, anoReal:mesAtual.ano
+              }]);
+              setNovoExtra({ nome:"", valor:"", cartao:"", categoria:"", data:"" });
               setShowForm(false);
             }} style={{ ...btnPri, padding:"10px" }}>Adicionar gasto</button>
           </div>
         </div>
       )}
 
-      {/* Lista agrupada por cartão */}
       {gastosMes.length === 0 ? (
         <div style={{ textAlign:"center", color:C.gray, padding:"50px 0" }}>
           <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>🗓️</p>
@@ -103,13 +125,11 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
           {ordemGrupos.map(key => {
             const itens = grupos[key] || [];
             const totalGrupo = itens.reduce((s,e)=>s+Number(e.valor),0);
-            const aberto = expandidosGrupo[key] !== false; // aberto por padrão
+            const aberto = expandidosGrupo[key] !== false;
             const nomeGrupo = key === "__sem_cartao__" ? "Sem cartão" : key;
-            const cartaoInfo = cartoes.find(c=>c.nome===key);
 
             return (
               <div key={key} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                {/* Header do grupo */}
                 <div onClick={()=>toggleGrupo(key)} style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
                   {key !== "__sem_cartao__" ? (
                     <CartaoLogo grupo={key} cartoes={cartoes} size={32}/>
@@ -126,7 +146,6 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
                   <span style={{ color:C.gray, fontSize:"0.72rem" }}>{aberto?"▲":"▼"}</span>
                 </div>
 
-                {/* Itens do grupo */}
                 {aberto && (
                   <div style={{ padding:"0 12px 12px", animation:"fadeIn 0.2s ease" }}>
                     <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:8, display:"flex", flexDirection:"column", gap:4 }}>
@@ -144,6 +163,10 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
                                   <option value="">Sem cartão</option>
                                   {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
                                 </select>
+                                <select value={editandoExtra.categoria||""} onChange={ev=>setEditandoExtra(x=>({...x,categoria:ev.target.value}))} style={inp()}>
+                                  <option value="">Categoria (opcional)</option>
+                                  {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
+                                </select>
                                 <div style={{ display:"flex", gap:6 }}>
                                   <button onClick={salvarExtra} style={{ flex:2,...btnPri,padding:"8px" }}>✓ Salvar</button>
                                   <button onClick={()=>setEditandoExtra(null)} style={{ flex:1,padding:"8px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.gray,cursor:"pointer",fontFamily:"inherit" }}>Cancelar</button>
@@ -154,9 +177,10 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
                             <div style={{ padding:"9px 12px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ fontSize:"0.82rem", color:C.grayLight, fontWeight:500 }}>{e.nome}</div>
-                                {e.data && (
-                                  <div style={{ fontSize:"0.62rem", color:C.gray, marginTop:2 }}>📅 {fmtData(e.data)}</div>
-                                )}
+                                <div style={{ display:"flex", gap:8, marginTop:2 }}>
+                                  {e.data && <div style={{ fontSize:"0.62rem", color:C.gray }}>📅 {fmtData(e.data)}</div>}
+                                  {categoriaLabel(e.categoria) && <div style={{ fontSize:"0.62rem", color:C.gray }}>{categoriaLabel(e.categoria)}</div>}
+                                </div>
                               </div>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                                 <span style={{ fontSize:"0.85rem", color:C.purple, fontWeight:700 }}>{fmt(e.valor)}</span>
@@ -174,7 +198,6 @@ export default function GastosDoMes({ extras, setExtras, cartoes, MESES, editand
             );
           })}
 
-          {/* Total do mês */}
           <div style={{ background:C.surface, borderRadius:10, padding:"11px 14px", display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}`, marginTop:4 }}>
             <span style={{ fontSize:"0.84rem", fontWeight:700, color:C.grayLight }}>Total {mesAtual.label}</span>
             <span style={{ fontSize:"0.88rem", color:C.purple, fontWeight:800 }}>{fmt(totalMes)}</span>

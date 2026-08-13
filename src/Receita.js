@@ -39,7 +39,7 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
   const [salarioTemp, setSalarioTemp] = useState(salario);
   const [mesSel, setMesSel] = useState(0);
   const [showForm, setShowForm] = useState(false);
-  const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"" });
+  const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mesIdx:0 });
   const [editandoExtra, setEditandoExtra] = useState(null);
 
   const mesAtual = MESES[mesSel];
@@ -55,6 +55,11 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
   const totalExtrasDoMes = extrasDoMes.reduce((s,e)=>s+Number(e.valor||0),0);
   const totalMes = salario + totalExtrasDoMes;
 
+  const abrirForm = () => {
+    setNovoExtra({ nome:"", valor:"", mesIdx:mesSel });
+    setShowForm(!showForm);
+  };
+
   const salvarExtra = () => {
     if (!editandoExtra?.nome||!editandoExtra?.valor) return;
     setExtrasReceita(prev => prev.map(e => e.id===editandoExtra.id ? { ...e, nome:editandoExtra.nome, valor:parseFloat(editandoExtra.valor) } : e));
@@ -63,8 +68,12 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
 
   return (
     <div style={{ animation:"fadeIn 0.25s ease" }}>
-      <h2 style={{ fontSize:"0.95rem", fontWeight:700, marginBottom:4, color:C.text }}>💰 Receita</h2>
-      <p style={{ fontSize:"0.75rem", color:C.textSub, marginBottom:16 }}>Salário fixo + entradas extras por mês</p>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <h2 style={{ fontSize:"0.95rem", fontWeight:700, margin:0, color:C.text }}>💰 Receita</h2>
+        <button onClick={abrirForm} style={{ padding:"7px 12px", fontSize:"0.75rem", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+          {showForm?"✕ Fechar":"+ Nova entrada"}
+        </button>
+      </div>
 
       <div style={{ background:C.card, borderRadius:12, padding:16, border:`1px solid ${C.border}`, marginBottom:12 }}>
         <div style={{ fontSize:"0.68rem", color:C.green, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>💼 Salário Fixo Mensal</div>
@@ -86,6 +95,32 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
         <p style={{ fontSize:"0.7rem", color:C.textSub, margin:"8px 0 0" }}>Aplicado automaticamente em todos os meses</p>
       </div>
 
+      {showForm && (
+        <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.primary}55`, marginBottom:14, animation:"fadeIn 0.2s ease" }}>
+          <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Nova entrada extra</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <input placeholder="Descrição (ex: Freelance, 13º...)" value={novoExtra.nome} onChange={e=>setNovoExtra(x=>({...x,nome:e.target.value}))} style={inp}/>
+              <input type="number" placeholder="Valor (R$)" value={novoExtra.valor} onChange={e=>setNovoExtra(x=>({...x,valor:e.target.value}))} style={inp}/>
+            </div>
+            <select value={novoExtra.mesIdx} onChange={e=>setNovoExtra(x=>({...x,mesIdx:parseInt(e.target.value)}))} style={inp}>
+              {MESES.map(m=><option key={m.idx} value={m.idx}>{m.label}</option>)}
+            </select>
+            <button onClick={()=>{
+              if (!novoExtra.nome||!novoExtra.valor) return;
+              const m = MESES[novoExtra.mesIdx];
+              setExtrasReceita(e=>[...e,{
+                id:Date.now(), nome:novoExtra.nome, valor:parseFloat(novoExtra.valor),
+                mesReal:m.mes, anoReal:m.ano
+              }]);
+              setShowForm(false);
+            }} style={{ padding:"10px", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+              Adicionar entrada
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
         <button onClick={()=>setMesSel(m=>Math.max(0,m-1))} disabled={mesSel===0}
           style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===0?C.border:C.textSub, width:32, height:32, cursor:mesSel===0?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
@@ -95,32 +130,6 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
         </div>
         <button onClick={()=>setMesSel(m=>Math.min(MESES.length-1,m+1))} disabled={mesSel===MESES.length-1}
           style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===MESES.length-1?C.border:C.textSub, width:32, height:32, cursor:mesSel===MESES.length-1?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
-      </div>
-
-      <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.border}`, marginBottom:14 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:showForm?10:0 }}>
-          <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700 }}>➕ Entrada Extra em {mesAtual.label}</div>
-          <button onClick={()=>setShowForm(!showForm)} style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:C.primary, padding:"5px 10px", fontSize:"0.72rem", cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>
-            {showForm?"✕ Fechar":"+ Adicionar"}
-          </button>
-        </div>
-        {showForm && (
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            <input placeholder="Descrição (ex: Freelance, 13º...)" value={novoExtra.nome} onChange={e=>setNovoExtra(x=>({...x,nome:e.target.value}))} style={inp}/>
-            <input type="number" placeholder="Valor (R$)" value={novoExtra.valor} onChange={e=>setNovoExtra(x=>({...x,valor:e.target.value}))} style={inp}/>
-            <button onClick={()=>{
-              if (!novoExtra.nome||!novoExtra.valor) return;
-              setExtrasReceita(e=>[...e,{
-                id:Date.now(), nome:novoExtra.nome, valor:parseFloat(novoExtra.valor),
-                mesReal:mesAtual.mes, anoReal:mesAtual.ano
-              }]);
-              setNovoExtra({nome:"",valor:""});
-              setShowForm(false);
-            }} style={{ padding:"10px", borderRadius:8, border:"none", background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
-              Adicionar entrada
-            </button>
-          </div>
-        )}
       </div>
 
       {extrasDoMes.length === 0 ? (

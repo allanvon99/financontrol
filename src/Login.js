@@ -90,7 +90,7 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:"20px 20px 18px", fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:C.bg, padding:"20px 20px 18px", fontFamily:"'Segoe UI',system-ui,sans-serif", display:"flex", flexDirection:"column", justifyContent:"center" }}>
       <style>{`html,body{background:${C.bg};margin:0;padding:0;}`}</style>
       {docLegal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={()=>setDocLegal(null)}>

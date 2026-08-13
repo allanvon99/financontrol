@@ -581,6 +581,18 @@ export default function App() {
   const planoAtivo = (planoDb === "pro" || trialAtivo) ? "pro" : "free";
   const planoAtualObj = planosConfig[planoAtivo];
   const diasTrialRestantes = trialAtivo ? Math.ceil((trialFimCalculado - new Date()) / 86400000) : 0;
+  const mesMaxProjecao = (planoAtualObj?.limites?.mesesProjecao ?? 18) - 1;
+
+  const setCartoesComLimite = (atualizador) => {
+    setCartoes(atual => {
+      const novo = typeof atualizador === "function" ? atualizador(atual) : atualizador;
+      if (Array.isArray(novo) && novo.length > atual.length && !podeAdicionar(planoAtivo, "cartoes", atual.length)) {
+        setShowUpgrade("cartoes");
+        return atual;
+      }
+      return novo;
+    });
+  };
 
   const alertasAtivos = saudeConfig?.ativos !== false;
 
@@ -588,9 +600,13 @@ export default function App() {
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={()=>setShowUpgrade(null)}>
       <div onClick={e=>e.stopPropagation()} style={{ background: dark ? "#1a1a2e" : "#fff", borderRadius:16, padding:24, maxWidth:340, textAlign:"center" }}>
         <div style={{ fontSize:"1.6rem", marginBottom:8 }}>🔒</div>
-        <div style={{ fontSize:"1rem", fontWeight:800, marginBottom:8, color: dark ? "#fff" : "#111" }}>Limite do plano gratuito atingido</div>
+        <div style={{ fontSize:"1rem", fontWeight:800, marginBottom:8, color: dark ? "#fff" : "#111" }}>
+          {showUpgrade === "simulador" ? "Recurso exclusivo do plano Pro" : "Limite do plano gratuito atingido"}
+        </div>
         <div style={{ fontSize:"0.85rem", color: dark ? "#aaa" : "#555", marginBottom:16, lineHeight:1.5 }}>
-          Assine o plano Pro para cadastrar sem limites, ou continue no gratuito removendo algum item existente.
+          {showUpgrade === "simulador"
+            ? "O simulador de amortização está disponível no plano Pro. Assine pra desbloquear."
+            : "Assine o plano Pro para cadastrar sem limites, ou continue no gratuito removendo algum item existente."}
         </div>
         <button onClick={()=>{ setShowUpgrade(null); setAba("conta"); setAbaContaInicial("plano"); }} style={{ width:"100%", padding:"12px", borderRadius:10, background:"#6366f1", color:"#fff", border:"none", fontWeight:700, marginBottom:8 }}>Ver planos</button>
         <button onClick={()=>setShowUpgrade(null)} style={{ width:"100%", padding:"10px", borderRadius:10, background:"transparent", color: dark ? "#aaa" : "#555", border:"none" }}>Agora não</button>
@@ -665,6 +681,10 @@ export default function App() {
   };
 
   const irParaAba = (k) => {
+    if (k === "amortizacao" && !planoAtualObj?.recursos?.simulador) {
+      setShowUpgrade("simulador");
+      return;
+    }
     setShowEditar(false);
     setAba(k);
     registrarTela(k);
@@ -1029,8 +1049,8 @@ export default function App() {
                   </div>
                   <div style={{ fontSize:"0.62rem", color:C.gray }}>{parcelasNoMesSel.length} parcela(s) ativas</div>
                 </div>
-                <button onClick={()=>setMesParcelas(m=>Math.min(17,m+1))} disabled={mesParcelas>=17}
-                  style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesParcelas>=17?C.border:C.gray, width:32, height:32, cursor:mesParcelas>=17?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
+                <button onClick={()=>setMesParcelas(m=>Math.min(mesMaxProjecao,m+1))} disabled={mesParcelas>=mesMaxProjecao}
+                  style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesParcelas>=mesMaxProjecao?C.border:C.gray, width:32, height:32, cursor:mesParcelas>=mesMaxProjecao?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
               </div>
             )}
 

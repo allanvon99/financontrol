@@ -310,6 +310,11 @@ export default function App() {
   const [amorResultado, setAmorResultado] = useState(null);
 
   const C = dark ? CORES : CORES_LIGHT;
+
+  useEffect(() => {
+    document.body.style.background = C.bg;
+    document.documentElement.style.background = C.bg;
+  }, [C.bg]);
   const grupos = useMemo(()=>[...new Set(parcelas.map(p=>p.grupo).filter(Boolean))],[parcelas]);
 
   const parcelasComRestante = useMemo(()=>parcelas.map(p=>({

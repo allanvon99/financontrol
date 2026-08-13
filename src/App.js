@@ -225,6 +225,7 @@ export default function App() {
   const [extrasReceita, setExtrasReceita] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [loadStatus, setLoadStatus] = useState("loading");
+  const [modoSeguranca, setModoSeguranca] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle");
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
@@ -381,6 +382,25 @@ export default function App() {
             const snap = await getDoc(doc(db,"usuarios",u.uid));
             if (snap.exists()) {
               const d = snap.data();
+
+              // TRAVA DE SEGURANÇA: conta já existe (tem outros dados salvos, ex. criadoEm/nome/plano)
+              // mas NENHUM campo financeiro reconhecido foi encontrado. Isso indica um schema
+              // incompatível/desconhecido — NUNCA prosseguir com estado vazio, pois o autosave
+              // sobrescreveria os dados reais do usuário com valores em branco.
+              const contaJaExistia = d.criadoEm !== undefined || d.nome !== undefined || d.plano !== undefined || Object.keys(d).length > 0;
+              const temCampoFinanceiroReconhecido = d.parcelas !== undefined || d.fixos !== undefined || d.extras !== undefined || d.cartoes !== undefined || d.salario !== undefined || d.extrasReceita !== undefined;
+              if (contaJaExistia && !temCampoFinanceiroReconhecido) {
+                registrarErro(new Error("Schema não reconhecido no documento do usuário — autosave bloqueado"), { origem: 'trava_seguranca', uid: u.uid, camposEncontrados: Object.keys(d).join(",") });
+                setModoSeguranca(true);
+                setLoadStatus("loaded");
+                return;
+              }
+
+              // Backup bruto no momento da leitura: cópia fiel de exatamente o que veio do banco,
+              // antes de qualquer processamento/migração local. Existe independente de qualquer
+              // bug que venha a acontecer depois nesta sessão.
+              setDoc(doc(db,"usuarios",u.uid,"backups",`carregamento_${new Date().toISOString()}`), d).catch(()=>{});
+
               if (d.parcelas) setParcelas(d.parcelas);
               if (d.fixos) setFixos(d.fixos);
               if (d.extras) {
@@ -447,20 +467,24 @@ export default function App() {
 
   const handleSave = useCallback(async (parc,fix,ext,sal,extRec,carts,prefs)=>{
     if (!auth.currentUser) return;
+    if (modoSeguranca) return; // trava: nunca sobrescrever com estado que pode estar incompleto
     setSaveStatus("saving");
     try {
-      await setDoc(doc(db,"usuarios",auth.currentUser.uid),{
+      const payload = {
         parcelas:parc, fixos:fix, extras:ext, salario:sal,
         extrasReceita:extRec, cartoes:carts, categorias:categorias, saudeConfig:saudeConfig,
         ...(prefs !== undefined ? { preferencias:prefs } : {})
-      }, { merge:true });
+      };
+      await setDoc(doc(db,"usuarios",auth.currentUser.uid), payload, { merge:true });
+      // Backup automático: mantém uma cópia versionada a cada salvamento, independente do plano do Firebase
+      setDoc(doc(db,"usuarios",auth.currentUser.uid,"backups",new Date().toISOString()), payload).catch(()=>{});
       setSaveStatus("saved");
     } catch { setSaveStatus("error"); }
     setTimeout(()=>setSaveStatus("idle"),3000);
-  },[]);
+  },[modoSeguranca]);
 
   useEffect(()=>{
-    if (loadStatus!=="loaded") return;
+    if (loadStatus!=="loaded" || modoSeguranca) return;
     const t = setTimeout(()=>handleSave(parcelas,fixos,extras,salario,extrasReceita,cartoes),800); // categorias e saudeConfig salvos via useEffect separado
     return ()=>clearTimeout(t);
   },[parcelas,fixos,extras,salario,extrasReceita,cartoes,loadStatus,handleSave]);
@@ -632,6 +656,22 @@ export default function App() {
   );
 
   if (!user) return <Login/>;
+
+  if (modoSeguranca) return (
+    <div style={{ minHeight:"100vh", background:CORES.bg, display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      <div style={{ maxWidth:380, textAlign:"center" }}>
+        <div style={{ fontSize:"2rem", marginBottom:12 }}>🔒</div>
+        <h2 style={{ fontSize:"1.05rem", fontWeight:800, color:CORES.grayLight, margin:"0 0 10px" }}>Não conseguimos carregar seus dados com segurança</h2>
+        <p style={{ fontSize:"0.85rem", color:CORES.gray, lineHeight:1.6, margin:"0 0 18px" }}>
+          Detectamos que sua conta tem um formato de dados que o app não reconheceu. Para proteger suas informações, pausamos qualquer salvamento automático nesta sessão.
+        </p>
+        <p style={{ fontSize:"0.8rem", color:CORES.gray, lineHeight:1.6, margin:"0 0 18px" }}>
+          Seus dados originais continuam intactos no banco. Entre em contato com o suporte (allanvon99@gmail.com) antes de continuar usando o app nesta conta.
+        </p>
+        <button onClick={()=>signOut(auth)} style={{ padding:"12px 20px", borderRadius:10, border:"none", background:CORES.primary, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>Sair</button>
+      </div>
+    </div>
+  );
 
   if (!onboardingConcluido) return (
     <Onboarding C={C} dark={dark} setDark={setDark} nome={nomeUsuario} onFinalizar={finalizarOnboarding}/>

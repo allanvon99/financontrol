@@ -376,6 +376,7 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (u)=>{
       try {
         setUser(u);
+        setLoadStatus("loading"); // evita mostrar dado de uma conta anterior enquanto a nova carrega
         if (u) {
           primeiroSalvamentoDaSessao.current = true;
           dadosBrutosCarregados.current = null;
@@ -474,6 +475,8 @@ export default function App() {
             registrarErro(firestoreErr, { origem: 'carregar_dados' });
           }
           try { sessionStorage.removeItem("cadastroRecente"); } catch {}
+          setLoadStatus("loaded");
+        } else {
           setLoadStatus("loaded");
         }
       } catch(authErr) {
@@ -671,6 +674,7 @@ export default function App() {
     if (cfg.salario) setSalario(cfg.salario);
     if (cfg.cartoes?.length) setCartoes(cfg.cartoes);
     if (cfg.saudeConfig) setSaudeConfig(cfg.saudeConfig);
+    setAba("projecao");
     setOnboardingConcluido(true);
     registrarEvento('onboarding_concluido', { tem_renda: !!cfg.salario, qtd_cartoes: (cfg.cartoes||[]).length, alertas: cfg.saudeConfig?.ativos !== false });
     try {
@@ -740,7 +744,7 @@ export default function App() {
   );
 
   if (!onboardingConcluido) return (
-    <Onboarding C={C} dark={dark} setDark={setDark} nome={nomeUsuario} onFinalizar={finalizarOnboarding}/>
+    <Onboarding C={C} dark={dark} setDark={setDark} nome={nomeUsuario} onFinalizar={finalizarOnboarding} trialUsadoAnteriormente={trialUsadoAnteriormente}/>
   );
   const mesAtual = projecao[0];
 

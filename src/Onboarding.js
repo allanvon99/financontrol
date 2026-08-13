@@ -14,7 +14,7 @@ const BANCOS = [
   { nome:"Caixa", logo:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Caixa_Econ%C3%B4mica_Federal_logo.svg/1200px-Caixa_Econ%C3%B4mica_Federal_logo.svg.png", bg:"#0070AF" },
 ];
 
-export default function Onboarding({ C, dark, setDark, nome, onFinalizar }) {
+export default function Onboarding({ C, dark, setDark, nome, onFinalizar, trialUsadoAnteriormente }) {
   const [step, setStep] = useState(0);
   const [dados, setDados] = useState({
     situacao:null, salario:"", cartoes:[], alertasAtivos:true, alertas:{ saudavel:60, atencao:80 },
@@ -362,18 +362,30 @@ export default function Onboarding({ C, dark, setDark, nome, onFinalizar }) {
                 </div>
               ))}
             </div>
-            <div style={{ background:`linear-gradient(135deg,${C.primary}18,${C.purple||C.primary}18)`, border:`1px solid ${C.primary}44`, borderRadius:14, padding:16, marginBottom:16, textAlign:"left" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                <span style={{ fontSize:"1.1rem" }}>🎁</span>
-                <span style={{ fontSize:"0.86rem", fontWeight:800, color:C.primaryLight }}>30 dias grátis do plano Pro</span>
+            {!trialUsadoAnteriormente ? (
+              <div style={{ background:`linear-gradient(135deg,${C.primary}18,${C.purple||C.primary}18)`, border:`1px solid ${C.primary}44`, borderRadius:14, padding:16, marginBottom:16, textAlign:"left" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                  <span style={{ fontSize:"1.1rem" }}>🎁</span>
+                  <span style={{ fontSize:"0.86rem", fontWeight:800, color:C.primaryLight }}>30 dias grátis do plano Pro</span>
+                </div>
+                <div style={{ fontSize:"0.78rem", color:SUB, lineHeight:1.55, marginBottom:10 }}>
+                  Você já pode usar tudo sem limite: cartões, parcelas, categorias, simulador e alertas ilimitados. Sem cobrança agora e sem cartão de crédito.
+                </div>
+                <div style={{ fontSize:"0.72rem", color:SUB, background:C.surface, borderRadius:9, padding:"8px 10px", lineHeight:1.5 }}>
+                  Depois dos 30 dias, o plano Pro custa <strong style={{color:TXT}}>{fmtPreco(planoPro.precoMensal)}/mês</strong>. Se preferir, pode continuar no plano gratuito com uso limitado — sem cobrança nenhuma.
+                </div>
               </div>
-              <div style={{ fontSize:"0.78rem", color:SUB, lineHeight:1.55, marginBottom:10 }}>
-                Você já pode usar tudo sem limite: cartões, parcelas, categorias, simulador e alertas ilimitados. Sem cobrança agora e sem cartão de crédito.
+            ) : (
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, padding:16, marginBottom:16, textAlign:"left" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                  <span style={{ fontSize:"1.1rem" }}>👋</span>
+                  <span style={{ fontSize:"0.86rem", fontWeight:800, color:TXT }}>Você está no plano gratuito</span>
+                </div>
+                <div style={{ fontSize:"0.78rem", color:SUB, lineHeight:1.55 }}>
+                  Já dá pra usar o essencial sem custo. Se quiser cartões, parcelas e recursos sem limite, o plano Pro custa <strong style={{color:TXT}}>{fmtPreco(planoPro.precoMensal)}/mês</strong> — pode assinar quando quiser em Gerenciar Conta.
+                </div>
               </div>
-              <div style={{ fontSize:"0.72rem", color:SUB, background:C.surface, borderRadius:9, padding:"8px 10px", lineHeight:1.5 }}>
-                Depois dos 30 dias, o plano Pro custa <strong style={{color:TXT}}>{fmtPreco(planoPro.precoMensal)}/mês</strong>. Se preferir, pode continuar no plano gratuito com uso limitado — sem cobrança nenhuma.
-              </div>
-            </div>
+            )}
 
             <div style={{ background:`${C.primary}12`, border:`1px solid ${C.primary}33`, borderRadius:12, padding:"12px 14px", marginBottom:24, textAlign:"left" }}>
               <div style={{ fontSize:"0.75rem", fontWeight:700, color:C.primaryLight, marginBottom:6 }}>💡 Dica</div>

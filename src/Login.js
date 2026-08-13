@@ -16,9 +16,9 @@ const LIGHT = {
 };
 
 const inp = (C, ov={}) => ({
-  width:"100%", padding:"11px 13px", borderRadius:9,
+  width:"100%", padding:"13px 14px", borderRadius:10,
   border:`1px solid ${C.border}`, background:C.surface, color:C.text,
-  fontSize:"0.87rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box", ...ov
+  fontSize:"0.92rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box", ...ov
 });
 
 const btnPri = (ov={}) => ({
@@ -111,7 +111,7 @@ export default function Login() {
         </div>
       )}
 
-      <div style={{ maxWidth:400, margin:"0 auto" }}>
+      <div style={{ maxWidth: modo==="login" ? 440 : 400, margin:"0 auto", width:"100%" }}>
         <div style={{ display:"flex", alignItems:"center", marginBottom:14 }}>
           <img src="/logo512.png" alt="Von Finance" style={{ height:36, display:"block" }}/>
         </div>
@@ -141,8 +141,8 @@ export default function Login() {
           </>
         )}
 
-        <div style={{ background:C.card, borderRadius:14, padding:16, border:`1px solid ${C.border}` }}>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        <div style={{ background:C.card, borderRadius:16, padding: modo==="login" ? 28 : 16, border:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", flexDirection:"column", gap: modo==="login" ? 14 : 8 }}>
             {modo==="cadastro" && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                 <input placeholder="Nome" value={form.nome} onChange={e=>set("nome",e.target.value)} style={inp(C)}/>

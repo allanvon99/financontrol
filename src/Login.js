@@ -16,15 +16,15 @@ const LIGHT = {
 };
 
 const inp = (C, ov={}) => ({
-  width:"100%", padding:"13px 14px", borderRadius:10,
+  width:"100%", padding:"11px 13px", borderRadius:9,
   border:`1px solid ${C.border}`, background:C.surface, color:C.text,
-  fontSize:"0.9rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box", ...ov
+  fontSize:"0.87rem", fontFamily:"inherit", outline:"none", boxSizing:"border-box", ...ov
 });
 
 const btnPri = (ov={}) => ({
-  width:"100%", padding:"14px", borderRadius:12, border:"none",
+  width:"100%", padding:"12px", borderRadius:11, border:"none",
   background:"linear-gradient(135deg,#1d6fa4,#2188c9)", color:"#fff",
-  fontWeight:700, fontSize:"0.92rem", cursor:"pointer", fontFamily:"inherit", ...ov
+  fontWeight:700, fontSize:"0.9rem", cursor:"pointer", fontFamily:"inherit", ...ov
 });
 
 export default function Login() {
@@ -90,11 +90,11 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:"32px 20px 40px", fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:C.bg, padding:"20px 20px 18px", fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+      <style>{`html,body{background:${C.bg};margin:0;padding:0;}`}</style>
       {docLegal && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={()=>setDocLegal(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:"22px 22px 0 0", padding:"18px 20px 30px", width:"100%", maxWidth:520, maxHeight:"88vh", overflowY:"auto" }}>
-            <div style={{ width:38, height:4, borderRadius:2, background:C.border, margin:"0 auto 16px" }}/>
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={()=>setDocLegal(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:16, padding:"20px 20px 24px", width:"100%", maxWidth:460, maxHeight:"78vh", overflowY:"auto", border:`1px solid ${C.border}` }}>
             <h3 style={{ fontSize:"1rem", fontWeight:800, color:C.text, margin:"0 0 14px" }}>
               {docLegal==="termos" ? "Termos de Uso" : "Política de Privacidade"}
             </h3>
@@ -112,34 +112,37 @@ export default function Login() {
       )}
 
       <div style={{ maxWidth:400, margin:"0 auto" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:26 }}>
-          <div style={{ width:42, height:42, borderRadius:12, background:"linear-gradient(135deg,#1d6fa4,#2188c9)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.2rem" }}>💳</div>
-          <span style={{ fontSize:"1.15rem", fontWeight:800, color:C.text }}>Von Finance</span>
+        <div style={{ display:"flex", alignItems:"center", marginBottom:14 }}>
+          <img src="/logo512.png" alt="Von Finance" style={{ height:36, display:"block" }}/>
         </div>
 
-        <h1 style={{ fontSize:"1.5rem", fontWeight:800, color:C.text, margin:"0 0 8px", lineHeight:1.3 }}>
-          Tenha o controle real<br/>do seu dinheiro
-        </h1>
-        <p style={{ color:C.textSub, fontSize:"0.85rem", margin:"0 0 20px", lineHeight:1.5 }}>
-          Veja quanto sobra de verdade nos próximos meses, considerando todos os seus gastos.
-        </p>
+        {modo==="cadastro" && (
+          <>
+            <h1 style={{ fontSize:"1.3rem", fontWeight:800, color:C.text, margin:"0 0 6px", lineHeight:1.25 }}>
+              Tenha o controle real do seu dinheiro
+            </h1>
+            <p style={{ color:C.textSub, fontSize:"0.78rem", margin:"0 0 12px", lineHeight:1.4 }}>
+              Veja quanto sobra de verdade nos próximos meses, considerando todos os seus gastos.
+            </p>
 
-        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:22 }}>
-          {[
-            { i:"📊", t:"Projeção mês a mês" },
-            { i:"🧾", t:"Todas as parcelas organizadas" },
-            { i:"💸", t:"Simulador de amortização" },
-          ].map(b=>(
-            <div key={b.t} style={{ display:"flex", alignItems:"center", gap:10, fontSize:"0.82rem", color:C.textSub }}>
-              <span style={{ fontSize:"1rem" }}>{b.i}</span>
-              <span>{b.t}</span>
-              <span style={{ marginLeft:"auto", color:C.green, fontSize:"0.8rem" }}>✓</span>
+            <div style={{ display:"flex", flexDirection:"column", gap:5, marginBottom:14 }}>
+              {[
+                { i:"📊", t:"Projeção mês a mês" },
+                { i:"🧾", t:"Todas as parcelas organizadas" },
+                { i:"💸", t:"Simulador de amortização" },
+              ].map(b=>(
+                <div key={b.t} style={{ display:"flex", alignItems:"center", gap:8, fontSize:"0.76rem", color:C.textSub }}>
+                  <span style={{ fontSize:"0.9rem" }}>{b.i}</span>
+                  <span>{b.t}</span>
+                  <span style={{ marginLeft:"auto", color:C.green, fontSize:"0.76rem" }}>✓</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
 
-        <div style={{ background:C.card, borderRadius:16, padding:20, border:`1px solid ${C.border}` }}>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+        <div style={{ background:C.card, borderRadius:14, padding:16, border:`1px solid ${C.border}` }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
             {modo==="cadastro" && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                 <input placeholder="Nome" value={form.nome} onChange={e=>set("nome",e.target.value)} style={inp(C)}/>
@@ -192,7 +195,7 @@ export default function Login() {
           </div>
         </div>
 
-        <p style={{ textAlign:"center", fontSize:"0.8rem", color:C.textSub, marginTop:18 }}>
+        <p style={{ textAlign:"center", fontSize:"0.78rem", color:C.textSub, marginTop:12 }}>
           {modo==="cadastro" ? "Já tem conta? " : "Não tem conta? "}
           <button onClick={()=>{ setModo(modo==="cadastro"?"login":"cadastro"); setErro(""); setAviso(""); }}
             style={{ background:"none", border:"none", color:C.primaryLight, fontWeight:700, cursor:"pointer", fontFamily:"inherit", fontSize:"0.8rem", padding:0 }}>

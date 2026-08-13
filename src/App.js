@@ -391,7 +391,7 @@ export default function App() {
               // mas NENHUM campo financeiro reconhecido foi encontrado. Isso indica um schema
               // incompatível/desconhecido — NUNCA prosseguir com estado vazio, pois o autosave
               // sobrescreveria os dados reais do usuário com valores em branco.
-              const contaJaExistia = d.criadoEm !== undefined || d.nome !== undefined || d.plano !== undefined || Object.keys(d).length > 0;
+              const contaJaExistia = d.onboardingConcluido === true;
               const temCampoFinanceiroReconhecido = d.parcelas !== undefined || d.fixos !== undefined || d.extras !== undefined || d.cartoes !== undefined || d.salario !== undefined || d.extrasReceita !== undefined;
               if (contaJaExistia && !temCampoFinanceiroReconhecido) {
                 registrarErro(new Error("Schema não reconhecido no documento do usuário — autosave bloqueado"), { origem: 'trava_seguranca', uid: u.uid, camposEncontrados: Object.keys(d).join(",") });

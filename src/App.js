@@ -1157,7 +1157,7 @@ export default function App() {
         {/* CADASTROS */}
         {!showEditar && aba==="cadastros"&&(
           <Cadastros
-            cartoes={cartoes} setCartoes={setCartoes}
+            cartoes={cartoes} setCartoes={setCartoesComLimite}
             categorias={categorias} setCategorias={setCategorias}
             saudeConfig={saudeConfig} setSaudeConfig={setSaudeConfig}
             dark={dark}

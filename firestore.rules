@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== Funções auxiliares (camada 4: trava contra sobrescrita destrutiva) =====
+    function ficouVazio(antes, depois, campo) {
+      return antes.get(campo, []).size() > 0
+          && depois.get(campo, []).size() == 0;
+    }
+    function paraNumero(b) { return b ? 1 : 0; }
+    function quantasCategoriasEsvaziaram(antes, depois) {
+      return paraNumero(ficouVazio(antes, depois, 'parcelas'))
+           + paraNumero(ficouVazio(antes, depois, 'fixos'))
+           + paraNumero(ficouVazio(antes, depois, 'cartoes'))
+           + paraNumero(ficouVazio(antes, depois, 'extras'))
+           + paraNumero(ficouVazio(antes, depois, 'extrasReceita'))
+           + paraNumero(antes.get('salario', 0) > 0 && depois.get('salario', 0) == 0);
+    }
+
+    match /usuarios/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Cadastro: permite 'plano' (só se for exatamente "free") e 'trialFim' —
+      // necessários pro trial de 30 dias no cadastro. Continua bloqueando
+      // 'planoExpiraEm' e 'assinaturaId', que só devem vir de um backend/Cloud Function.
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && !request.resource.data.keys().hasAny(['planoExpiraEm','assinaturaId'])
+        && (!('plano' in request.resource.data) || request.resource.data.plano == 'free');
+
+      // Update: mantém a proteção original (ninguém edita o próprio plano/trial depois de
+      // criado) e adiciona a camada 4 — bloqueia se 2+ categorias financeiras forem
+      // esvaziadas na mesma escrita (assinatura de bug de carregamento, não de uso normal).
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['plano','planoExpiraEm','assinaturaId','trialFim','criadoEm'])
+        && quantasCategoriasEsvaziaram(resource.data, request.resource.data) < 2;
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
+
+      match /backups/{backupId} {
+        allow read, create: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /feedbacks/{doc} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+  }
+}

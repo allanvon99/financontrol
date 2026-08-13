@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { auth, db } from "./firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { POLITICA_PRIVACIDADE, TERMOS_USO, VERSAO_DOCS } from "./legal";
 
 const DARK = {
@@ -58,16 +58,13 @@ export default function Login() {
         await signInWithEmailAndPassword(auth, form.email, form.senha);
       } else {
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.senha);
-        const agora = new Date();
-        const trialFim = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
         await setDoc(doc(db, "usuarios", cred.user.uid), {
           nome: form.nome.trim(),
           sobrenome: form.sobrenome.trim(),
-          criadoEm: agora.toISOString(),
-          trialFim: trialFim.toISOString(),
+          criadoEm: serverTimestamp(),
           onboardingConcluido: false,
           plano: "free",
-          termosAceitos: { versao: VERSAO_DOCS, aceitoEm: agora.toISOString() },
+          termosAceitos: { versao: VERSAO_DOCS, aceitoEm: new Date().toISOString() },
         }, { merge: true });
       }
     } catch (e) {

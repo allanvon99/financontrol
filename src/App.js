@@ -280,7 +280,7 @@ export default function App() {
   const [notifLidas, setNotifLidas] = useState({});
   const [sobrenomeUsuario, setSobrenomeUsuario] = useState("");
   const [planosConfig, setPlanosConfig] = useState(PLANOS_PADRAO);
-  const [trialFim, setTrialFim] = useState(null);
+  const [criadoEm, setCriadoEm] = useState(null);
   const [planoDb, setPlanoDb] = useState("free");
   const [showUpgrade, setShowUpgrade] = useState(null);
   const [abaContaInicial, setAbaContaInicial] = useState(null); // "cartoes" | "parcelas" | "fixos" | null
@@ -437,7 +437,7 @@ export default function App() {
           if (d.saudeConfig) setSaudeConfig(d.saudeConfig);
           if (d.nome) setNomeUsuario(d.nome);
           if (d.sobrenome) setSobrenomeUsuario(d.sobrenome);
-          if (d.trialFim) setTrialFim(d.trialFim);
+          if (d.criadoEm) setCriadoEm(d.criadoEm?.toDate ? d.criadoEm.toDate() : new Date(d.criadoEm));
           if (d.plano) setPlanoDb(d.plano);
           setNotifLidas(d.notifLidas || {});
           setOnboardingConcluido(d.onboardingConcluido === true);
@@ -445,7 +445,7 @@ export default function App() {
           setGuiasVistos(d.guiasVistos || {});
 
           const fb = d.feedback || {};
-          const criado = d.criadoEm ? new Date(d.criadoEm) : null;
+          const criado = d.criadoEm ? (d.criadoEm?.toDate ? d.criadoEm.toDate() : new Date(d.criadoEm)) : null;
           const diasDeConta = criado ? (Date.now() - criado.getTime()) / 86400000 : 0;
           const dias = (iso) => iso ? (Date.now() - new Date(iso).getTime()) / 86400000 : 999;
           const INTERVALO = 7;
@@ -576,10 +576,11 @@ export default function App() {
   const btnPri = { background:`linear-gradient(135deg,#1d6fa4,#2188c9)`, border:"none", borderRadius:8, color:"#fff", padding:"10px 18px", fontSize:"0.82rem", fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" };
   const saveBtnStyle = { display:"inline-flex", alignItems:"center", gap:6, border:"none", borderRadius:8, color:"#fff", padding:"7px 14px", fontSize:"0.78rem", fontWeight:700, cursor:saveStatus==="saving"?"not-allowed":"pointer", fontFamily:"inherit", transition:"all 0.3s", background:saveStatus==="saved"?"#1a4a2e":saveStatus==="error"?"#4a1a1a":`linear-gradient(135deg,#1d6fa4,#2188c9)`, opacity:saveStatus==="saving"?0.75:1 };
 
-  const trialAtivo = trialFim ? new Date(trialFim) > new Date() : false;
+  const trialFimCalculado = criadoEm ? new Date(criadoEm.getTime() + 30*24*60*60*1000) : null;
+  const trialAtivo = trialFimCalculado ? trialFimCalculado > new Date() : false;
   const planoAtivo = (planoDb === "pro" || trialAtivo) ? "pro" : "free";
   const planoAtualObj = planosConfig[planoAtivo];
-  const diasTrialRestantes = trialAtivo ? Math.ceil((new Date(trialFim) - new Date()) / 86400000) : 0;
+  const diasTrialRestantes = trialAtivo ? Math.ceil((trialFimCalculado - new Date()) / 86400000) : 0;
 
   const alertasAtivos = saudeConfig?.ativos !== false;
 

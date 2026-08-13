@@ -460,6 +460,11 @@ export default function App() {
                 setDark(d.preferencias.dark);
                 try { document.cookie = `finan_tema=${d.preferencias.dark};max-age=31536000;path=/`; } catch {}
               }
+            } else {
+              // Documento não existe: conta de auth sem dado no Firestore (cadastro recém-criado
+              // ainda propagando, ou documento removido manualmente). Trata como conta nova —
+              // nunca assume onboarding concluído nesse caso.
+              setOnboardingConcluido(false);
             }
           } catch(firestoreErr) {
             registrarErro(firestoreErr, { origem: 'carregar_dados' });

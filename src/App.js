@@ -232,6 +232,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
   const [showNovaParcela, setShowNovaParcela] = useState(false);
+  const [showNovoFixo, setShowNovoFixo] = useState(false);
   const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valor:"", parcelas:"", dataInicio:"" });
   const [novoFixo, setNovoFixo] = useState({ nome:"", valor:"", cartao:"" });
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0, cartao:"" });
@@ -1202,9 +1203,18 @@ export default function App() {
         {/* FIXOS */}
         {!showEditar && aba==="fixos"&&(
           <div style={{ animation:"fadeIn 0.25s ease" }}>
-            <h2 style={{ fontSize:"0.95rem", fontWeight:700, marginBottom:14, color:C.grayLight }}>Gastos Fixos</h2>
-            <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.border}`, marginBottom:12 }}>
-              <div style={{ fontSize:"0.68rem", color:C.orange, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>+ Adicionar fixo</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <h2 style={{ fontSize:"0.95rem", fontWeight:700, margin:0, color:C.grayLight }}>Gastos Fixos</h2>
+              <button onClick={()=>{
+                if(!showNovoFixo && !podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; }
+                setShowNovoFixo(!showNovoFixo);
+              }} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
+                {showNovoFixo?"✕ Fechar":"+ Adicionar"}
+              </button>
+            </div>
+            {showNovoFixo && (
+            <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.primary}55`, marginBottom:12, animation:"fadeIn 0.2s ease" }}>
+              <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Novo gasto fixo</div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                   <input placeholder="Descrição" value={novoFixo.nome} onChange={e=>setNovoFixo(f=>({...f,nome:e.target.value}))} style={inp()}/>
@@ -1220,9 +1230,10 @@ export default function App() {
                     {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
                   </select>
                 </div>
-                <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; if(!podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:"",categoria:""}); }} style={btnPri}>Adicionar</button>
+                <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; if(!podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:"",categoria:""}); setShowNovoFixo(false); }} style={btnPri}>Adicionar</button>
               </div>
             </div>
+            )}
             {fixos.length===0 ? (
               <div style={{ textAlign:"center", color:C.gray, padding:"50px 0" }}>
                 <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>📌</p>

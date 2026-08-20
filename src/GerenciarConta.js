@@ -5,7 +5,7 @@ import {
   reauthenticateWithCredential, EmailAuthProvider,
   deleteUser, signOut,
 } from "firebase/auth";
-import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
 import { carregarPlanos, PLANOS_PADRAO, fmtPreco } from "./planos";
 import { POLITICA_PRIVACIDADE, TERMOS_USO, VERSAO_DOCS, DATA_VIGENCIA } from "./legal";
 
@@ -127,6 +127,8 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
     setLoading(true);
     try {
       await reautenticar(senhaDelete);
+      const backupsSnap = await getDocs(collection(db,"usuarios",user.uid,"backups"));
+      await Promise.all(backupsSnap.docs.map(d=>deleteDoc(d.ref)));
       await deleteDoc(doc(db,"usuarios",user.uid));
       await deleteUser(user);
     } catch(e){ flash(setErro, traduz(e.code)); setLoading(false); }

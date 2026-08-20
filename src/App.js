@@ -14,7 +14,7 @@ import Notificacoes, { SinoIcon, gerarNotificacoes } from "./Notificacoes";
 import GerenciarConta from "./GerenciarConta";
 import RaioXMes from "./RaioXMes";
 import Feedback from "./Feedback";
-import { identificarUsuario, limparUsuario, registrarTela, registrarEvento, registrarErro } from "./monitoramento";
+import { iniciarMonitoramento, identificarUsuario, limparUsuario, registrarTela, registrarEvento, registrarErro } from "./monitoramento";
 import { carregarPlanos, PLANOS_PADRAO, podeAdicionar, fmtPreco } from "./planos";
 import GastosDoMes from "./GastosDoMes";
 
@@ -288,6 +288,7 @@ export default function App() {
   const [showUpgrade, setShowUpgrade] = useState(null);
   const [abaContaInicial, setAbaContaInicial] = useState(null); // "cartoes" | "parcelas" | "fixos" | null
 
+  useEffect(()=>{ iniciarMonitoramento(); },[]);
   useEffect(()=>{ carregarPlanos().then(setPlanosConfig); },[]);
   useEffect(()=>{
     if (new URLSearchParams(window.location.search).get("testarSentry") === "1") {

@@ -713,6 +713,7 @@ export default function App() {
       setShowUpgrade("simulador");
       return;
     }
+    if (k === "fixos" || k === "parcelas") setExpandidosCart({});
     setShowEditar(false);
     setAba(k);
     registrarTela(k);

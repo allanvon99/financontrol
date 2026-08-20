@@ -125,7 +125,7 @@ export default function GastosDoMes({ extras, setExtras, cartoes, categorias, ME
           {ordemGrupos.map(key => {
             const itens = grupos[key] || [];
             const totalGrupo = itens.reduce((s,e)=>s+Number(e.valor),0);
-            const aberto = expandidosGrupo[key] !== false;
+            const aberto = expandidosGrupo[key] === true; // fechado por padrão
             const nomeGrupo = key === "__sem_cartao__" ? "Sem cartão" : key;
 
             return (

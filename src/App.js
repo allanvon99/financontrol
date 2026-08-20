@@ -1129,7 +1129,7 @@ export default function App() {
             ):[...new Set(parcelasNoMesSel.map(p=>p.grupo))].map(grupo=>{
               const parcsGrupo = parcelasNoMesSel.filter(p=>p.grupo===grupo);
               if(parcsGrupo.length===0)return null;
-              const aberto = expandidosCart[grupo]!==false;
+              const aberto = expandidosCart[grupo]===true;
               const totalGrupo = parcsGrupo.reduce((s,p)=>s+Number(p.valor)*p.restantesNoMes,0);
               return (
                 <div key={grupo} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:8 }}>
@@ -1287,7 +1287,7 @@ export default function App() {
                   return ordem.map(k=>{
                     const itens = grupos[k]||[];
                     const totalG = itens.reduce((s,f)=>s+Number(f.valor),0);
-                    const aberto = expandidosCart["fixo_"+k]!==false;
+                    const aberto = expandidosCart["fixo_"+k]===true;
                     const nomeG = k==="__sem__" ? "Sem cartão" : k;
                     return (
                       <div key={k} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden" }}>

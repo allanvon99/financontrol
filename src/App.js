@@ -289,6 +289,11 @@ export default function App() {
   const [abaContaInicial, setAbaContaInicial] = useState(null); // "cartoes" | "parcelas" | "fixos" | null
 
   useEffect(()=>{ carregarPlanos().then(setPlanosConfig); },[]);
+  useEffect(()=>{
+    if (new URLSearchParams(window.location.search).get("testarSentry") === "1") {
+      registrarErro(new Error("Teste manual de monitoramento — pode ignorar"), { origem: "teste_manual" });
+    }
+  }, []);
   const [mesOffset, setMesOffset] = useState(0); // offset para meses retroativos
   const [viewCartao, setViewCartao] = useState(null);
   // Timeout de segurança — sai do loading após 10s mesmo se Firebase travar

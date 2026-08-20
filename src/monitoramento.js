@@ -25,6 +25,10 @@ export function iniciarMonitoramento() {
 
   ReactGA.initialize(GA_ID);
   ReactGA.send({ hitType: "pageview", page: "/" });
+
+  // Exposto no console do navegador só pra facilitar teste manual do monitoramento.
+  // Inofensivo deixar (o Sentry já roda no app inteiro de qualquer forma).
+  window.Sentry = Sentry;
 }
 
 // Identifica o usuário (sem expor dados sensíveis)

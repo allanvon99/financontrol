@@ -291,6 +291,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                   { l:"Cartões", usado:(dadosApp?.cartoes||[]).length, limite:free.limites.cartoes },
                   { l:"Parcelas", usado:(dadosApp?.parcelas||[]).length, limite:free.limites.parcelas },
                   { l:"Gastos fixos", usado:(dadosApp?.fixos||[]).length, limite:free.limites.fixos },
+                  { l:"Gastos do mês", usado:(dadosApp?.extras||[]).filter(e=>{ const hoje=new Date(); return e.mesReal===hoje.getMonth() && e.anoReal===hoje.getFullYear(); }).length, limite:free.limites.extras },
                 ].map(u=>{
                   const pct = u.limite ? Math.min(100,(u.usado/u.limite)*100) : 0;
                   const cheio = u.limite && u.usado>=u.limite;
@@ -320,6 +321,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                 { r:"Cartões", f: free.limites.cartoes ?? "∞", p: pro.limites.cartoes ?? "Ilimitado" },
                 { r:"Parcelas", f: free.limites.parcelas ?? "∞", p: pro.limites.parcelas ?? "Ilimitado" },
                 { r:"Gastos fixos", f: free.limites.fixos ?? "∞", p: pro.limites.fixos ?? "Ilimitado" },
+                { r:"Gastos do mês", f: free.limites.extras ? `${free.limites.extras}/mês` : "∞", p: pro.limites.extras ? `${pro.limites.extras}/mês` : "Ilimitado" },
                 { r:"Projeção futura", f:`${free.limites.mesesProjecao} meses`, p:`${pro.limites.mesesProjecao} meses` },
                 { r:"Simulador amortização", f: free.recursos.simulador?"✓":"—", p: pro.recursos.simulador?"✓":"—" },
                 { r:"Categorias custom", f: free.recursos.categoriasCustom?"✓":"—", p: pro.recursos.categoriasCustom?"✓":"—" },

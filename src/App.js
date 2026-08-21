@@ -378,6 +378,9 @@ export default function App() {
   const totalParcelasNoMesSel = useMemo(()=>
     parcelasNoMesSel.reduce((s,p)=>s+Number(p.valor),0),[parcelasNoMesSel]);
 
+  const totalQuitarParcelasNoMesSel = useMemo(()=>
+    parcelasNoMesSel.reduce((s,p)=>s+Number(p.valor)*p.restantesNoMes,0),[parcelasNoMesSel]);
+
   useEffect(()=>{
     const unsub = onAuthStateChanged(auth, async (u)=>{
       try {
@@ -1084,9 +1087,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Seletor de mês */}
-            {parcelasComRestante.length>0&&(
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
+            {/* Seletor de mês — sempre visível, mesmo sem nada cadastrado ainda */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
                 <button onClick={()=>setMesParcelas(m=>m-1)} disabled={mesParcelas<=mesMinParcelas}
                   style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesParcelas<=mesMinParcelas?C.border:C.gray, width:32, height:32, cursor:mesParcelas<=mesMinParcelas?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
                 <div style={{ flex:1, textAlign:"center" }}>
@@ -1103,20 +1105,30 @@ export default function App() {
                 <button onClick={()=>setMesParcelas(m=>Math.min(mesMaxProjecao,m+1))} disabled={mesParcelas>=mesMaxProjecao}
                   style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesParcelas>=mesMaxProjecao?C.border:C.gray, width:32, height:32, cursor:mesParcelas>=mesMaxProjecao?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
               </div>
-            )}
 
             {/* Total do mês selecionado */}
             {parcelasNoMesSel.length>0&&(
               <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}` }}>
                 <div>
                   <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.grayLight }}>
-                    {mesParcelas<0?"Total pago neste mês":"Total restante neste mês"}
+                    {mesParcelas<0?"Total pago neste mês":"Soma das parcelas a pagar no mês"}
                   </div>
                   <div style={{ fontSize:"0.62rem", color:C.gray, marginTop:2 }}>
                     {parcelasNoMesSel.length} parcela(s) · {mesParcelas===0?"mês atual":mesParcelas<0?"histórico":"projeção"}
                   </div>
                 </div>
                 <span style={{ color:C.primary, fontWeight:800, fontSize:"0.9rem", alignSelf:"center" }}>{fmt(totalParcelasNoMesSel)}</span>
+              </div>
+            )}
+
+            {/* Valor pra quitar tudo à vista */}
+            {mesParcelas>=0 && totalQuitarParcelasNoMesSel>0 && (
+              <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.grayLight }}>Valor para quitar as parcelas em aberto</div>
+                  <div style={{ fontSize:"0.62rem", color:C.gray, marginTop:2 }}>Soma de tudo que ainda falta pagar, se quitar à vista</div>
+                </div>
+                <span style={{ color:C.orange, fontWeight:800, fontSize:"0.9rem", alignSelf:"center" }}>{fmt(totalQuitarParcelasNoMesSel)}</span>
               </div>
             )}
 
@@ -1134,7 +1146,7 @@ export default function App() {
               const totalGrupo = parcsGrupo.reduce((s,p)=>s+Number(p.valor)*p.restantesNoMes,0);
               return (
                 <div key={grupo} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden", marginBottom:8 }}>
-                  <div onClick={()=>setExpandidosCart(p=>({...p,[grupo]:p[grupo]===false}))} style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+                  <div onClick={()=>setExpandidosCart(p=>({...p,[grupo]:p[grupo]!==true}))} style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
                     <CartaoLogo grupo={grupo} cartoes={cartoes} size={36}/>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:"0.88rem", fontWeight:700, color:C.grayLight }}>{grupo}</div>
@@ -1292,7 +1304,7 @@ export default function App() {
                     const nomeG = k==="__sem__" ? "Sem cartão" : k;
                     return (
                       <div key={k} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                        <div onClick={()=>setExpandidosCart(p=>({...p,["fixo_"+k]:p["fixo_"+k]===false}))}
+                        <div onClick={()=>setExpandidosCart(p=>({...p,["fixo_"+k]:p["fixo_"+k]!==true}))}
                           style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
                           {k!=="__sem__"
                             ? <CartaoLogo grupo={k} cartoes={cartoes} size={32}/>

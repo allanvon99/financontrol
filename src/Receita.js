@@ -126,10 +126,18 @@ export default function Receita({ salario, setSalario, extrasReceita, setExtrasR
           style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===0?C.border:C.textSub, width:32, height:32, cursor:mesSel===0?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
         <div style={{ flex:1, textAlign:"center" }}>
           <div style={{ fontSize:"0.92rem", fontWeight:800, color:C.text }}>{mesAtual.label}</div>
-          <div style={{ fontSize:"0.65rem", color:C.textSub }}>{fmt(totalMes)} total · {extrasDoMes.length} extra(s)</div>
+          <div style={{ fontSize:"0.65rem", color:C.textSub }}>{extrasDoMes.length} extra(s) cadastrado(s)</div>
         </div>
         <button onClick={()=>setMesSel(m=>Math.min(MESES.length-1,m+1))} disabled={mesSel===MESES.length-1}
           style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8, color:mesSel===MESES.length-1?C.border:C.textSub, width:32, height:32, cursor:mesSel===MESES.length-1?"not-allowed":"pointer", fontSize:"1rem", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
+      </div>
+
+      <div style={{ background:C.card, borderRadius:10, padding:"12px 14px", marginBottom:14, display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}` }}>
+        <div>
+          <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.text }}>Total de receitas no mês</div>
+          <div style={{ fontSize:"0.62rem", color:C.textSub, marginTop:2 }}>Salário fixo + {extrasDoMes.length} extra(s)</div>
+        </div>
+        <span style={{ color:C.green, fontWeight:800, fontSize:"0.9rem", alignSelf:"center" }}>{fmt(totalMes)}</span>
       </div>
 
       {extrasDoMes.length === 0 ? (

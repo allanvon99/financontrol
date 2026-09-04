@@ -739,9 +739,10 @@ export default function App() {
     const total = parseFloat(editandoParcela.valorTotalEdit ?? totalOriginal);
     if(!total || total<=0) return;
     const valorParcela = Math.floor((total/n)*100)/100;
+    const novaDataCadastro = editandoParcela.dataInicio ? new Date(editandoParcela.dataInicio).toISOString() : editandoParcela.dataCadastro;
     const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id);
     if(eh_novo && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
-    setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:valorParcela,valorTotalOriginal:total,parcelas:n,parcelasOriginal:n}:x));
+    setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:valorParcela,valorTotalOriginal:total,parcelas:n,parcelasOriginal:n,dataCadastro:novaDataCadastro}:x));
     setEditandoParcela(null);
   };
 
@@ -1234,7 +1235,7 @@ export default function App() {
                                       <div style={{ fontSize:"0.6rem", color:C.gray }}>por mês</div>
                                     </div>
                                     <div style={{ display:"flex", alignItems:"center", gap:6, marginLeft:10 }}>
-                                      <button onClick={e=>{e.stopPropagation();setEditandoParcela({...p,parcelas:p.parcelasRestantes});}} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
+                                      <button onClick={e=>{e.stopPropagation();setEditandoParcela({...p, dataInicio: p.dataCadastro ? p.dataCadastro.split("T")[0] : ""});}} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
                                       <button onClick={e=>{e.stopPropagation();setConfirmRemover({tipo:"parcela",id:p.id,nome:p.nome});}} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
                                       <span style={{ color:C.gray, fontSize:"0.7rem" }}>{expandido?"▲":"▼"}</span>
                                     </div>

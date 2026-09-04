@@ -234,7 +234,7 @@ export default function App() {
   const [showEditar, setShowEditar] = useState(false);
   const [showNovaParcela, setShowNovaParcela] = useState(false);
   const [showNovoFixo, setShowNovoFixo] = useState(false);
-  const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valor:"", parcelas:"", dataInicio:"" });
+  const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valorTotal:"", parcelas:"", dataInicio:"" });
   const [novoFixo, setNovoFixo] = useState({ nome:"", valor:"", cartao:"" });
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0, cartao:"" });
   const [expandidosProj, setExpandidosProj] = useState({});
@@ -424,7 +424,13 @@ export default function App() {
 
               dadosBrutosCarregados.current = d;
 
-              if (d.parcelas) setParcelas(d.parcelas);
+              if (d.parcelas) setParcelas(d.parcelas.map(p => {
+                const n = parseInt(p.parcelasOriginal ?? p.parcelas);
+                if (!n || n < 1 || !Number.isInteger(n)) {
+                  return { ...p, parcelas: 1, parcelasOriginal: 1 };
+                }
+                return p;
+              }));
               if (d.fixos) setFixos(d.fixos);
               if (d.extras) {
             // Migra gastos antigos que usam índice para mes+ano real
@@ -725,7 +731,19 @@ export default function App() {
 
   const salvarFixo = ()=>{ if(!editandoFixo?.nome||!editandoFixo?.valor)return; const eh_novo = !fixos.some(f=>f.id===editandoFixo.id); if(eh_novo && !podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(p=>p.map(f=>f.id===editandoFixo.id?{...editandoFixo,valor:parseFloat(editandoFixo.valor)}:f)); setEditandoFixo(null); };
   const salvarExtra = ()=>{ if(!editandoExtra?.nome||!editandoExtra?.valor)return; setExtras(p=>p.map(e=>e.id===editandoExtra.id?{...editandoExtra,valor:parseFloat(editandoExtra.valor)}:e)); setEditandoExtra(null); };
-  const salvarParcela = ()=>{ if(!editandoParcela?.nome||!editandoParcela?.valor)return; const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id); if(eh_novo && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; } setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:parseFloat(editandoParcela.valor),parcelas:parseInt(editandoParcela.parcelas),parcelasOriginal:parseInt(editandoParcela.parcelas)}:x)); setEditandoParcela(null); };
+  const salvarParcela = ()=>{
+    if(!editandoParcela?.nome) return;
+    const n = parseInt(editandoParcela.parcelas);
+    if(!n || n<1 || !Number.isInteger(n)) return;
+    const totalOriginal = Math.round((Number(editandoParcela.valor)*Number(editandoParcela.parcelasOriginal||editandoParcela.parcelas))*100)/100;
+    const total = parseFloat(editandoParcela.valorTotalEdit ?? totalOriginal);
+    if(!total || total<=0) return;
+    const valorParcela = Math.floor((total/n)*100)/100;
+    const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id);
+    if(eh_novo && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
+    setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:valorParcela,valorTotalOriginal:total,parcelas:n,parcelasOriginal:n}:x));
+    setEditandoParcela(null);
+  };
 
   if (authLoading||loadStatus==="loading") return (
     <div style={{ minHeight:"100vh", background:CORES.bg, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:12 }}>
@@ -1047,11 +1065,23 @@ export default function App() {
                     {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
                   </select>
                   {cartoes.length===0&&<div style={{ fontSize:"0.72rem", color:C.orange, textAlign:"center", padding:"6px", background:C.surface, borderRadius:8 }}>⚠️ Vá em Cartões para adicionar um primeiro.</div>}
+                  <input placeholder="Descrição" value={novaParc.nome} onChange={e=>setNovaParc(p=>({...p,nome:e.target.value}))} style={inp()}/>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                    <input placeholder="Descrição" value={novaParc.nome} onChange={e=>setNovaParc(p=>({...p,nome:e.target.value}))} style={inp()}/>
-                    <input type="number" placeholder="Valor (R$)" value={novaParc.valor} onChange={e=>setNovaParc(p=>({...p,valor:e.target.value}))} style={inp()}/>
+                    <input type="number" placeholder="Valor total da compra" value={novaParc.valorTotal} onChange={e=>setNovaParc(p=>({...p,valorTotal:e.target.value}))} style={inp()}/>
+                    <input type="number" placeholder="Total de parcelas" value={novaParc.parcelas} onChange={e=>setNovaParc(p=>({...p,parcelas:e.target.value}))} style={inp()}/>
                   </div>
-                  <input type="number" placeholder="Total de parcelas" value={novaParc.parcelas} onChange={e=>setNovaParc(p=>({...p,parcelas:e.target.value}))} style={inp()}/>
+                  {(()=>{
+                    const total = parseFloat(novaParc.valorTotal);
+                    const n = parseInt(novaParc.parcelas);
+                    if(!total || !n || n<1) return null;
+                    const valorParcela = Math.floor((total/n)*100)/100;
+                    const diferenca = Math.round((total - valorParcela*n)*100)/100;
+                    return (
+                      <div style={{ fontSize:"0.72rem", color:C.primary, padding:"7px 10px", background:C.surface, borderRadius:8, fontWeight:600 }}>
+                        {n}x de {fmt(valorParcela)}{diferenca!==0?` (última parcela ${fmt(valorParcela+diferenca)})`:""}
+                      </div>
+                    );
+                  })()}
                   <div>
                     <div style={{ fontSize:"0.62rem", color:C.gray, marginBottom:3 }}>📅 Data da 1ª parcela</div>
                     <div style={{ position:"relative", overflow:"hidden", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface }}>
@@ -1069,20 +1099,27 @@ export default function App() {
                     📅 A data de início define quando a primeira parcela foi cobrada
                   </div>
                   <button onClick={()=>{
-                    if(!novaParc.nome||!novaParc.valor||!novaParc.parcelas||!novaParc.grupo)return;
+                    const total = parseFloat(novaParc.valorTotal);
+                    const n = parseInt(novaParc.parcelas);
+                    if(!novaParc.nome||!novaParc.grupo) return;
+                    if(!total || total<=0){ return; }
+                    if(!n || n<1 || !Number.isInteger(n)){ return; }
                     const dataInicio = novaParc.dataInicio ? new Date(novaParc.dataInicio).toISOString() : new Date().toISOString();
                     if(!podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
+                    const valorParcela = Math.floor((total/n)*100)/100;
                     setParcelas(p=>[...p,{
-                      ...novaParc,
+                      grupo:novaParc.grupo, nome:novaParc.nome, categoria:novaParc.categoria,
                       id:Date.now(),
-                      valor:parseFloat(novaParc.valor),
-                      parcelas:parseInt(novaParc.parcelas),
-                      parcelasOriginal:parseInt(novaParc.parcelas),
+                      valor:valorParcela,
+                      valorTotalOriginal:total,
+                      parcelas:n,
+                      parcelasOriginal:n,
                       dataCadastro: dataInicio,
                     }]);
-                    setNovaParc(prev=>({grupo:prev.grupo,nome:"",valor:"",parcelas:"",dataInicio:""}));
+                    setNovaParc(prev=>({grupo:prev.grupo,nome:"",valorTotal:"",parcelas:"",dataInicio:""}));
                     setShowNovaParcela(false);
-                  }} style={btnPri}>Adicionar</button>
+                  }} disabled={!novaParc.nome||!novaParc.grupo||!novaParc.valorTotal||!novaParc.parcelas||parseInt(novaParc.parcelas)<1}
+                  style={{...btnPri, opacity:(!novaParc.nome||!novaParc.grupo||!novaParc.valorTotal||!novaParc.parcelas||parseInt(novaParc.parcelas)<1)?0.5:1}}>Adicionar</button>
                 </div>
               </div>
             )}

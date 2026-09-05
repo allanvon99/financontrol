@@ -59,6 +59,46 @@ const calcParcelasRestantes = (p) => {
 
 const corSobra = (s,C) => s>=2000?C.green:s>=500?C.yellow:s>=0?C.orange:C.red;
 
+// ===== Renda variável: helpers =====
+const chaveMes = (m) => `${m.ano}-${m.mes}`; // chave absoluta, imune a mudança de "hoje"
+
+const rendaLiquidaDoMes = (rendasPorMes, m) => {
+  const chave = chaveMes(m);
+  if (rendasPorMes[chave] !== undefined) {
+    const r = rendasPorMes[chave];
+    const perc = r.perc || 0;
+    return { valorBruto: r.valor, perc, valor: r.valor*(1-perc/100), definido: true };
+  }
+  // repete o último mês definido anterior (carry-forward), buscando por ordem cronológica absoluta
+  let melhor = null;
+  Object.keys(rendasPorMes).forEach(k => {
+    const [ano,mes] = k.split("-").map(Number);
+    const chaveNum = ano*12+mes;
+    const alvoNum = m.ano*12+m.mes;
+    if (chaveNum < alvoNum && (!melhor || chaveNum > melhor.chaveNum)) melhor = { chaveNum, ...rendasPorMes[k] };
+  });
+  if (melhor) {
+    const perc = melhor.perc || 0;
+    return { valorBruto: melhor.valor, perc, valor: melhor.valor*(1-perc/100), definido: false };
+  }
+  return { valorBruto: 0, perc: 0, valor: 0, definido: false };
+};
+
+// extras com recorrência: único (mesReal/anoReal), fixo (repete pra sempre a partir do início) ou parcelado (repete N meses)
+const extraAplicaAoMes = (e, m) => {
+  if (!e.recorrencia || e.recorrencia === "unico") {
+    if (e.mesReal!==undefined && e.anoReal!==undefined) return e.mesReal===m.mes && e.anoReal===m.ano;
+    const off = e.offset ?? e.mes ?? 0;
+    return off === m.idx;
+  }
+  if (e.anoInicio===undefined || e.mesInicio===undefined) return false;
+  const diff = (m.ano-e.anoInicio)*12 + (m.mes-e.mesInicio);
+  if (e.recorrencia === "fixo") return diff >= 0;
+  if (e.recorrencia === "parcelado") return diff >= 0 && diff < (e.parcelasTotal||1);
+  return false;
+};
+const extraValorLiquido = (e) => Number(e.valor||0) * (1-(e.perc||0)/100);
+
 function CartaoLogo({ grupo, cartoes, size=32 }) {
   const cartao = cartoes.find(c=>c.nome===grupo);
   if (cartao?.logo) return (
@@ -221,7 +261,7 @@ export default function App() {
   const [parcelas, setParcelas] = useState([]);
   const [fixos, setFixos] = useState([]);
   const [extras, setExtras] = useState([]);
-  const [salario, setSalario] = useState(0);
+  const [rendasPorMes, setRendasPorMes] = useState({}); // chave "ano-mes" -> { valor, perc }
   const [extrasReceita, setExtrasReceita] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [loadStatus, setLoadStatus] = useState("loading");
@@ -392,7 +432,7 @@ export default function App() {
           setParcelas([]);
           setFixos([]);
           setExtras([]);
-          setSalario(0);
+          setRendasPorMes({});
           setExtrasReceita([]);
           setCartoes([]);
           try {
@@ -409,7 +449,7 @@ export default function App() {
               // incompatível/desconhecido — NUNCA prosseguir com estado vazio, pois o autosave
               // sobrescreveria os dados reais do usuário com valores em branco.
               const contaJaExistia = d.onboardingConcluido === true;
-              const temCampoFinanceiroReconhecido = d.parcelas !== undefined || d.fixos !== undefined || d.extras !== undefined || d.cartoes !== undefined || d.salario !== undefined || d.extrasReceita !== undefined;
+              const temCampoFinanceiroReconhecido = d.parcelas !== undefined || d.fixos !== undefined || d.extras !== undefined || d.cartoes !== undefined || d.salario !== undefined || d.rendasPorMes !== undefined || d.extrasReceita !== undefined;
               if (contaJaExistia && !temCampoFinanceiroReconhecido) {
                 registrarErro(new Error("Schema não reconhecido no documento do usuário — autosave bloqueado"), { origem: 'trava_seguranca', uid: u.uid, camposEncontrados: Object.keys(d).join(",") });
                 setModoSeguranca(true);
@@ -427,6 +467,7 @@ export default function App() {
               if (d.parcelas) setParcelas(d.parcelas.map(p => {
                 const n = parseInt(p.parcelasOriginal ?? p.parcelas);
                 if (!n || n < 1 || !Number.isInteger(n)) {
+                  // parcela malformada (sem total de parcelas válido) — assume 1x pra não quebrar os cálculos
                   return { ...p, parcelas: 1, parcelasOriginal: 1 };
                 }
                 return p;
@@ -445,7 +486,14 @@ export default function App() {
             });
             setExtras(extrasMigrados);
           }
-              if (d.salario) setSalario(d.salario);
+              if (d.rendasPorMes) {
+                setRendasPorMes(d.rendasPorMes);
+              } else if (d.salario) {
+                // Migração automática: conta antiga só tinha um número fixo de salário.
+                // Aplica esse valor como a renda do mês atual, preservando o dado.
+                const hoje = new Date();
+                setRendasPorMes({ [`${hoje.getFullYear()}-${hoje.getMonth()}`]: { valor: d.salario, perc: 0 } });
+              }
               if (d.extrasReceita) {
             const ag = new Date();
             setExtrasReceita(d.extrasReceita.map(e=>{
@@ -503,7 +551,7 @@ export default function App() {
     return unsub;
   },[]);
 
-  const handleSave = useCallback(async (parc,fix,ext,sal,extRec,carts,prefs)=>{
+  const handleSave = useCallback(async (parc,fix,ext,rendasM,extRec,carts,prefs)=>{
     if (!auth.currentUser) return;
     if (modoSeguranca) return; // trava: nunca sobrescrever com estado que pode estar incompleto
 
@@ -516,9 +564,10 @@ export default function App() {
       const brutos = dadosBrutosCarregados.current;
       if (brutos) {
         const esvaziou = (campoBruto, novoValor) => Array.isArray(campoBruto) && campoBruto.length > 0 && Array.isArray(novoValor) && novoValor.length === 0;
+        const tinhaRenda = (brutos.rendasPorMes && Object.keys(brutos.rendasPorMes).length > 0) || Number(brutos.salario) > 0;
+        const perdeuRenda = tinhaRenda && (!rendasM || Object.keys(rendasM).length === 0);
         const suspeito = esvaziou(brutos.parcelas, parc) || esvaziou(brutos.fixos, fix) || esvaziou(brutos.extras, ext) ||
-          esvaziou(brutos.cartoes, carts) || esvaziou(brutos.extrasReceita, extRec) ||
-          (Number(brutos.salario) > 0 && Number(sal) === 0);
+          esvaziou(brutos.cartoes, carts) || esvaziou(brutos.extrasReceita, extRec) || perdeuRenda;
         if (suspeito) {
           registrarErro(new Error("Primeira gravação da sessão esvaziaria dados existentes — bloqueado"), { origem: 'trava_primeiro_salvamento', uid: auth.currentUser.uid });
           setModoSeguranca(true);
@@ -530,7 +579,7 @@ export default function App() {
     setSaveStatus("saving");
     try {
       const payload = {
-        parcelas:parc, fixos:fix, extras:ext, salario:sal,
+        parcelas:parc, fixos:fix, extras:ext, rendasPorMes:rendasM,
         extrasReceita:extRec, cartoes:carts, categorias:categorias, saudeConfig:saudeConfig,
         ...(prefs !== undefined ? { preferencias:prefs } : {})
       };
@@ -544,9 +593,9 @@ export default function App() {
 
   useEffect(()=>{
     if (loadStatus!=="loaded" || modoSeguranca) return;
-    const t = setTimeout(()=>handleSave(parcelas,fixos,extras,salario,extrasReceita,cartoes),800); // categorias e saudeConfig salvos via useEffect separado
+    const t = setTimeout(()=>handleSave(parcelas,fixos,extras,rendasPorMes,extrasReceita,cartoes),800); // categorias e saudeConfig salvos via useEffect separado
     return ()=>clearTimeout(t);
-  },[parcelas,fixos,extras,salario,extrasReceita,cartoes,loadStatus,handleSave]);
+  },[parcelas,fixos,extras,rendasPorMes,extrasReceita,cartoes,loadStatus,handleSave]);
 
   const salvarPreferencias = async (prefs) => {
     try { document.cookie = `finan_tema=${prefs.dark};max-age=31536000;path=/`; } catch {}
@@ -570,14 +619,11 @@ export default function App() {
 
   const receitaMes = useCallback((idx)=>{
     const m = MESES[idx];
-    if (!m) return salario;
-    const ext = extrasReceita.filter(e=>{
-      if (e.mesReal!==undefined && e.anoReal!==undefined) return e.mesReal===m.mes && e.anoReal===m.ano;
-      const off = e.offset ?? e.mes ?? 0;
-      return off === idx;
-    }).reduce((s,e)=>s+Number(e.valor||0),0);
-    return salario + ext;
-  },[salario,extrasReceita]);
+    if (!m) return 0;
+    const renda = rendaLiquidaDoMes(rendasPorMes, m);
+    const ext = extrasReceita.filter(e=>extraAplicaAoMes(e,m)).reduce((s,e)=>s+extraValorLiquido(e),0);
+    return renda.valor + ext;
+  },[rendasPorMes,extrasReceita]);
 
   const projecao = useMemo(()=>MESES.map((m,i)=>{
     const totalParc = parcelasComRestante.reduce((s,p)=>s+(i<p.parcelasRestantes?Number(p.valor):0),0);
@@ -651,8 +697,8 @@ export default function App() {
   ) : null;
 
   const notificacoes = useMemo(()=>gerarNotificacoes({
-    projecao, saudeConfig, parcelas: parcelasComRestante, salario, lidas: notifLidas
-  }), [projecao, saudeConfig, parcelasComRestante, salario, notifLidas]);
+    projecao, saudeConfig, parcelas: parcelasComRestante, salario: rendaLiquidaDoMes(rendasPorMes, MESES[0]).valor, lidas: notifLidas
+  }), [projecao, saudeConfig, parcelasComRestante, rendasPorMes, notifLidas]);
 
   const naoLidas = notificacoes.filter(n=>!n.lida).length;
 
@@ -686,7 +732,10 @@ export default function App() {
   };
 
   const finalizarOnboarding = async (cfg) => {
-    if (cfg.salario) setSalario(cfg.salario);
+    if (cfg.salario) {
+      const hoje = new Date();
+      setRendasPorMes({ [`${hoje.getFullYear()}-${hoje.getMonth()}`]: { valor: cfg.salario, perc: 0 } });
+    }
     if (cfg.cartoes?.length) setCartoes(cfg.cartoes);
     if (cfg.saudeConfig) setSaudeConfig(cfg.saudeConfig);
     setAba("projecao");
@@ -694,8 +743,9 @@ export default function App() {
     registrarEvento('onboarding_concluido', { tem_renda: !!cfg.salario, qtd_cartoes: (cfg.cartoes||[]).length, alertas: cfg.saudeConfig?.ativos !== false });
     try {
       if (auth.currentUser) {
+        const hoje = new Date();
         await setDoc(doc(db,"usuarios",auth.currentUser.uid), {
-          salario: cfg.salario || 0,
+          rendasPorMes: cfg.salario ? { [`${hoje.getFullYear()}-${hoje.getMonth()}`]: { valor: cfg.salario, perc: 0 } } : {},
           cartoes: cfg.cartoes || [],
           saudeConfig: cfg.saudeConfig,
           situacao: cfg.situacao || null,
@@ -734,11 +784,12 @@ export default function App() {
   const salvarParcela = ()=>{
     if(!editandoParcela?.nome) return;
     const n = parseInt(editandoParcela.parcelas);
-    if(!n || n<1 || !Number.isInteger(n)) return;
+    if(!n || n<1 || !Number.isInteger(n)) return; // nunca salva sem um número de parcelas válido
     const totalOriginal = Math.round((Number(editandoParcela.valor)*Number(editandoParcela.parcelasOriginal||editandoParcela.parcelas))*100)/100;
     const total = parseFloat(editandoParcela.valorTotalEdit ?? totalOriginal);
     if(!total || total<=0) return;
     const valorParcela = Math.floor((total/n)*100)/100;
+    // Se a pessoa mudou a data no formulário, usa a nova; senão mantém a data de cadastro original
     const novaDataCadastro = editandoParcela.dataInicio ? new Date(editandoParcela.dataInicio).toISOString() : editandoParcela.dataCadastro;
     const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id);
     if(eh_novo && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
@@ -800,7 +851,7 @@ export default function App() {
     <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
       <GerenciarConta
         C={C} onVoltar={()=>setTelaEspecial(null)} abaInicial={abaConta}
-        dadosApp={{ parcelas, fixos, extras, salario, extrasReceita, cartoes, categorias, saudeConfig }}
+        dadosApp={{ parcelas, fixos, extras, rendasPorMes, extrasReceita, cartoes, categorias, saudeConfig }}
         planoAtivo={planoAtivo} trialAtivo={trialAtivo} diasTrialRestantes={diasTrialRestantes}
       />
     </div>
@@ -1208,9 +1259,20 @@ export default function App() {
                                   <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                                     <input value={editandoParcela.nome} onChange={e=>setEditandoParcela(x=>({...x,nome:e.target.value}))} style={inp()}/>
                                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                                      <input type="number" placeholder="Valor" value={editandoParcela.valor} onChange={e=>setEditandoParcela(x=>({...x,valor:e.target.value}))} style={inp()}/>
+                                      <input type="number" placeholder="Valor total da compra" value={editandoParcela.valorTotalEdit ?? Math.round((Number(editandoParcela.valor)*Number(editandoParcela.parcelasOriginal||editandoParcela.parcelas))*100)/100} onChange={e=>setEditandoParcela(x=>({...x,valorTotalEdit:e.target.value}))} style={inp()}/>
                                       <input type="number" placeholder="Total parcelas" value={editandoParcela.parcelas} onChange={e=>setEditandoParcela(x=>({...x,parcelas:e.target.value}))} style={inp()}/>
                                     </div>
+                                    {(()=>{
+                                      const total = parseFloat(editandoParcela.valorTotalEdit ?? Math.round((Number(editandoParcela.valor)*Number(editandoParcela.parcelasOriginal||editandoParcela.parcelas))*100)/100);
+                                      const n = parseInt(editandoParcela.parcelas);
+                                      if(!total || !n || n<1) return null;
+                                      const valorParcela = Math.floor((total/n)*100)/100;
+                                      return (
+                                        <div style={{ fontSize:"0.7rem", color:C.primary, padding:"6px 9px", background:C.card, borderRadius:8, fontWeight:600 }}>
+                                          {n}x de {fmt(valorParcela)}
+                                        </div>
+                                      );
+                                    })()}
                                     <div style={{ position:"relative", overflow:"hidden", borderRadius:8, border:`1px solid ${C.border}`, background:C.surface }}>
                                       <input type="date" value={editandoParcela.dataInicio?.split("T")[0]||""}
                                         onChange={e=>setEditandoParcela(x=>({...x,dataInicio:e.target.value}))}
@@ -1218,7 +1280,8 @@ export default function App() {
                                       />
                                     </div>
                                     <div style={{ display:"flex", gap:8 }}>
-                                      <button onClick={salvarParcela} style={{ flex:2,...btnPri,padding:"9px" }}>✓ Salvar</button>
+                                      <button onClick={salvarParcela} disabled={!editandoParcela.nome||!editandoParcela.parcelas||parseInt(editandoParcela.parcelas)<1||!(editandoParcela.valorTotalEdit ?? true)}
+                                        style={{ flex:2,...btnPri,padding:"9px", opacity:(!editandoParcela.nome||!editandoParcela.parcelas||parseInt(editandoParcela.parcelas)<1)?0.5:1 }}>✓ Salvar</button>
                                       <button onClick={()=>setEditandoParcela(null)} style={{ flex:1,padding:"9px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.gray,cursor:"pointer",fontFamily:"inherit" }}>Cancelar</button>
                                     </div>
                                   </div>
@@ -1428,7 +1491,7 @@ export default function App() {
 
         {/* RECEITA */}
         {!showEditar && aba==="receita"&&(
-          <Receita salario={salario} setSalario={setSalario} extrasReceita={extrasReceita} setExtrasReceita={setExtrasReceita} dark={dark}/>
+          <Receita rendasPorMes={rendasPorMes} setRendasPorMes={setRendasPorMes} extrasReceita={extrasReceita} setExtrasReceita={setExtrasReceita} dark={dark}/>
         )}
 
         {/* AMORTIZAÇÃO */}

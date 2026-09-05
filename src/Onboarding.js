@@ -206,6 +206,9 @@ export default function Onboarding({ C, dark, setDark, nome, onFinalizar, trialU
               <p style={{ fontSize:"0.72rem", color:SUB, marginTop:14, lineHeight:1.5 }}>
                 💡 Você pode adicionar entradas extras depois (13º, freelas, bônus)
               </p>
+              <p style={{ fontSize:"0.72rem", color:SUB, marginTop:6, lineHeight:1.5 }}>
+                📊 Renda varia todo mês? Na tela de Receita você ajusta mês a mês e ainda pode descontar imposto automaticamente (útil pra PJ/autônomo).
+              </p>
             </div>
             <div style={{ display:"flex", gap:10, marginTop:24 }}>
               <button onClick={back} style={btnBack}>←</button>

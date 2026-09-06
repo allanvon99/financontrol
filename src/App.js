@@ -17,6 +17,7 @@ import Feedback from "./Feedback";
 import { iniciarMonitoramento, identificarUsuario, limparUsuario, registrarTela, registrarEvento, registrarErro } from "./monitoramento";
 import { carregarPlanos, PLANOS_PADRAO, podeAdicionar, fmtPreco } from "./planos";
 import GastosDoMes from "./GastosDoMes";
+import ImportarPlanilha from "./ImportarPlanilha";
 
 const CORES = {
   bg:"#0d1117", card:"#161b22", border:"#21262d", primary:"#2188c9",
@@ -857,6 +858,19 @@ export default function App() {
     </div>
   );
 
+  if (telaEspecial === "importar") return (
+    <ImportarPlanilha
+      C={C} inp={inp} btnPri={btnPri}
+      categorias={categorias} cartoes={cartoes}
+      fixos={fixos} setFixos={setFixos}
+      parcelas={parcelas} setParcelas={setParcelas}
+      extras={extras} setExtras={setExtras}
+      planoAtualObj={planoAtualObj} podeAdicionar={podeAdicionar}
+      onLimiteAtingido={()=>setShowUpgrade("fixos")}
+      onVoltar={()=>setTelaEspecial(null)}
+    />
+  );
+
   return (
     <div onClick={()=>menuPerfil && setMenuPerfil(false)} style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Segoe UI',sans-serif", color:C.grayLight, transition:"background 0.3s" }}>
       <style>{`
@@ -1105,6 +1119,9 @@ export default function App() {
               }} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
                 {showNovaParcela?"✕ Fechar":"+ Nova parcela"}
               </button>
+            </div>
+            <div onClick={()=>setTelaEspecial("importar")} style={{ display:"flex", alignItems:"center", gap:5, fontSize:"0.72rem", color:C.gray, marginBottom:14, cursor:"pointer", width:"fit-content" }}>
+              📥 ou <span style={{ color:C.primary, textDecoration:"underline", fontWeight:600 }}>importe de uma planilha</span>
             </div>
 
             {/* Form nova parcela */}
@@ -1361,6 +1378,9 @@ export default function App() {
                 {showNovoFixo?"✕ Fechar":"+ Adicionar"}
               </button>
             </div>
+            <div onClick={()=>setTelaEspecial("importar")} style={{ display:"flex", alignItems:"center", gap:5, fontSize:"0.72rem", color:C.gray, marginBottom:14, cursor:"pointer", width:"fit-content" }}>
+              📥 ou <span style={{ color:C.primary, textDecoration:"underline", fontWeight:600 }}>importe de uma planilha</span>
+            </div>
             {showNovoFixo && (
             <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.primary}55`, marginBottom:12, animation:"fadeIn 0.2s ease" }}>
               <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Novo gasto fixo</div>
@@ -1486,6 +1506,7 @@ export default function App() {
             CartaoLogo={CartaoLogo}
             planoAtualObj={planoAtualObj} podeAdicionar={podeAdicionar}
             onLimiteAtingido={()=>setShowUpgrade("extras")}
+            onImportar={()=>setTelaEspecial("importar")}
           />
         )}
 

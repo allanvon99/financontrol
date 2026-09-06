@@ -8,7 +8,7 @@ const fmtData = (d) => {
   return dt.toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit" });
 };
 
-export default function GastosDoMes({ extras, setExtras, cartoes, categorias, MESES, editandoExtra, setEditandoExtra, salvarExtra, C, inp, btnPri, CartaoLogo, planoAtualObj, podeAdicionar, onLimiteAtingido }) {
+export default function GastosDoMes({ extras, setExtras, cartoes, categorias, MESES, editandoExtra, setEditandoExtra, salvarExtra, C, inp, btnPri, CartaoLogo, planoAtualObj, podeAdicionar, onLimiteAtingido, onImportar }) {
   const [mesSel, setMesSel] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", cartao:"", categoria:"", data:"" });
@@ -61,6 +61,11 @@ export default function GastosDoMes({ extras, setExtras, cartoes, categorias, ME
           {showForm?"✕ Fechar":"+ Adicionar"}
         </button>
       </div>
+      {onImportar && (
+        <div onClick={onImportar} style={{ display:"flex", alignItems:"center", gap:5, fontSize:"0.72rem", color:C.gray, marginBottom:14, cursor:"pointer", width:"fit-content" }}>
+          📥 ou <span style={{ color:C.primary, textDecoration:"underline", fontWeight:600 }}>importe de uma planilha</span>
+        </div>
+      )}
 
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, background:C.card, borderRadius:12, padding:"10px 12px", border:`1px solid ${C.border}` }}>
         <button onClick={()=>setMesSel(m=>Math.max(0,m-1))} disabled={mesSel===0}

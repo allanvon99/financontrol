@@ -344,7 +344,7 @@ export default function Receita({ rendasPorMes, setRendasPorMes, extrasReceita, 
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <span style={{ fontSize:"0.85rem", color:C.green, fontWeight:700 }}>{fmt(extraValorLiquido(e))}</span>
                   <button onClick={()=>editarExtra(e)} style={{ background:"none", border:"none", color:C.textSub, cursor:"pointer", fontSize:"0.85rem", padding:"2px" }}>✏️</button>
-                  <button onClick={()=>setExtrasReceita(x=>x.filter(i=>i.id!==e.id))} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:"0.95rem", padding:"2px" }}>✕</button>
+                  <button onClick={()=>{ if(window.confirm(`Apagar "${e.nome}"?`)) setExtrasReceita(x=>x.filter(i=>i.id!==e.id)); }} style={{ background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:"0.95rem", padding:"2px" }}>✕</button>
                 </div>
               </div>
             );

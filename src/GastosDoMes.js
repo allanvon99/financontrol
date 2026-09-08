@@ -4,7 +4,8 @@ const fmt = (v) => Number(v).toLocaleString("pt-BR", { style:"currency", currenc
 
 const fmtData = (d) => {
   if (!d) return "";
-  const dt = new Date(d);
+  const [ano, mes, dia] = d.split("-").map(Number);
+  const dt = new Date(ano, mes-1, dia);
   return dt.toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit" });
 };
 
@@ -190,7 +191,7 @@ export default function GastosDoMes({ extras, setExtras, cartoes, categorias, ME
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                                 <span style={{ fontSize:"0.85rem", color:C.purple, fontWeight:700 }}>{fmt(e.valor)}</span>
                                 <button onClick={()=>setEditandoExtra({...e})} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
-                                <button onClick={()=>setExtras(x=>x.filter(j=>j.id!==e.id))} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
+                                <button onClick={()=>{ if(window.confirm(`Apagar "${e.nome}"?`)) setExtras(x=>x.filter(j=>j.id!==e.id)); }} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
                               </div>
                             </div>
                           )}

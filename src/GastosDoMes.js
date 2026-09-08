@@ -9,7 +9,7 @@ const fmtData = (d) => {
   return dt.toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit" });
 };
 
-export default function GastosDoMes({ extras, setExtras, cartoes, categorias, MESES, editandoExtra, setEditandoExtra, salvarExtra, C, inp, btnPri, CartaoLogo, planoAtualObj, podeAdicionar, onLimiteAtingido, onImportar }) {
+export default function GastosDoMes({ extras, setExtras, cartoes, categorias, MESES, editandoExtra, setEditandoExtra, salvarExtra, C, inp, btnPri, CartaoLogo, planoAtualObj, podeAdicionar, onLimiteAtingido, onImportar, onPedirRemocao }) {
   const [mesSel, setMesSel] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", cartao:"", categoria:"", data:"" });
@@ -191,7 +191,7 @@ export default function GastosDoMes({ extras, setExtras, cartoes, categorias, ME
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                                 <span style={{ fontSize:"0.85rem", color:C.purple, fontWeight:700 }}>{fmt(e.valor)}</span>
                                 <button onClick={()=>setEditandoExtra({...e})} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
-                                <button onClick={()=>{ if(window.confirm(`Apagar "${e.nome}"?`)) setExtras(x=>x.filter(j=>j.id!==e.id)); }} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
+                                <button onClick={()=>onPedirRemocao({tipo:"extra", id:e.id, nome:e.nome})} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
                               </div>
                             </div>
                           )}

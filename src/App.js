@@ -911,6 +911,7 @@ export default function App() {
                 if (confirmRemover.tipo==="parcela") setParcelas(x=>x.filter(i=>i.id!==confirmRemover.id));
                 if (confirmRemover.tipo==="fixo") setFixos(x=>x.filter(i=>i.id!==confirmRemover.id));
                 if (confirmRemover.tipo==="extra") setExtras(x=>x.filter(i=>i.id!==confirmRemover.id));
+                if (confirmRemover.tipo==="extraReceita") setExtrasReceita(x=>x.filter(i=>i.id!==confirmRemover.id));
                 setConfirmRemover(null);
               }} style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:C.red, color:"#fff", cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>Remover</button>
             </div>
@@ -1507,12 +1508,13 @@ export default function App() {
             planoAtualObj={planoAtualObj} podeAdicionar={podeAdicionar}
             onLimiteAtingido={()=>setShowUpgrade("extras")}
             onImportar={()=>setTelaEspecial("importar")}
+            onPedirRemocao={setConfirmRemover}
           />
         )}
 
         {/* RECEITA */}
         {!showEditar && aba==="receita"&&(
-          <Receita rendasPorMes={rendasPorMes} setRendasPorMes={setRendasPorMes} extrasReceita={extrasReceita} setExtrasReceita={setExtrasReceita} dark={dark}/>
+          <Receita rendasPorMes={rendasPorMes} setRendasPorMes={setRendasPorMes} extrasReceita={extrasReceita} setExtrasReceita={setExtrasReceita} dark={dark} onPedirRemocao={setConfirmRemover}/>
         )}
 
         {/* AMORTIZAÇÃO */}

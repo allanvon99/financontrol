@@ -361,6 +361,7 @@ export default function App() {
   const [amorStep, setAmorStep] = useState("menu");
   const [amorValor, setAmorValor] = useState("");
   const [amorResultado, setAmorResultado] = useState(null);
+  const [amorMesInicio, setAmorMesInicio] = useState(0); // 0 = mês atual, 1 = mês que vem...
 
   const C = dark ? CORES : CORES_LIGHT;
 
@@ -373,6 +374,16 @@ export default function App() {
   const parcelasComRestante = useMemo(()=>parcelas.map(p=>({
     ...p, parcelasRestantes: calcParcelasRestantes(p),
   })).filter(p=>p.parcelasRestantes>0),[parcelas]);
+
+  // Parcelas ajustadas pro simulador de amortização: se o usuário escolher simular
+  // "a partir do mês que vem", desconta os meses já cobertos (ex: a parcela desse mês,
+  // que ele já vai pagar do jeito normal) antes de calcular a quitação.
+  const parcelasParaAmortizar = useMemo(()=>{
+    if (amorMesInicio<=0) return parcelasComRestante;
+    return parcelasComRestante
+      .map(p=>({ ...p, parcelasRestantes: Math.max(0, p.parcelasRestantes-amorMesInicio) }))
+      .filter(p=>p.parcelasRestantes>0);
+  },[parcelasComRestante, amorMesInicio]);
 
   const totalParcelasRestantes = useMemo(()=>
     parcelasComRestante.reduce((s,p)=>s+Number(p.valor)*p.parcelasRestantes,0),[parcelasComRestante]);
@@ -1544,6 +1555,19 @@ export default function App() {
                 <p style={{ fontSize:"0.76rem", color:C.gray, marginBottom:14 }}>Informe o valor disponível — reserva, 13º, bônus ou qualquer entrada extra.</p>
                 <input type="number" placeholder="Ex: 2.000" value={amorValor} onChange={e=>setAmorValor(e.target.value)} onKeyDown={e=>e.key==="Enter"&&amorValor&&setAmorStep("tipo")}
                   style={{ ...inp(), padding:"14px", fontSize:"1rem", marginBottom:12 }}/>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:"0.72rem", color:C.gray, marginBottom:6 }}>A partir de qual mês simular a quitação?</div>
+                  <select value={amorMesInicio} onChange={e=>setAmorMesInicio(parseInt(e.target.value))} style={inp()}>
+                    {MESES.slice(0,6).map((m,i)=>(
+                      <option key={i} value={i}>{i===0?`${m.label} (mês atual)`:m.label}</option>
+                    ))}
+                  </select>
+                  {amorMesInicio>0 && (
+                    <div style={{ fontSize:"0.7rem", color:C.gray, marginTop:6, lineHeight:1.5 }}>
+                      As parcelas de {MESES[0].label} a {MESES[amorMesInicio-1].label} não entram na simulação — considera que você já vai pagá-las normalmente.
+                    </div>
+                  )}
+                </div>
                 {amorValor&&(
                   <button onClick={()=>setAmorStep("tipo")} style={{ width:"100%", ...btnPri, padding:"13px", borderRadius:10, fontSize:"0.88rem" }}>Continuar →</button>
                 )}
@@ -1553,9 +1577,17 @@ export default function App() {
             {amorStep==="tipo"&&(
               <div>
                 <button onClick={()=>setAmorStep("valor")} style={{ background:"none", border:"none", color:C.gray, cursor:"pointer", fontSize:"0.8rem", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", gap:4, padding:0 }}>← Voltar</button>
-                <div style={{ background:C.card, borderRadius:12, padding:"12px 14px", border:`1px solid ${C.border}`, marginBottom:16, display:"flex", justifyContent:"space-between" }}>
-                  <span style={{ fontSize:"0.8rem", color:C.gray }}>Valor para amortizar</span>
-                  <span style={{ fontSize:"0.88rem", fontWeight:800, color:C.primary }}>{fmt(parseFloat(amorValor))}</span>
+                <div style={{ background:C.card, borderRadius:12, padding:"12px 14px", border:`1px solid ${C.border}`, marginBottom:16, display:"flex", flexDirection:"column", gap:6 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between" }}>
+                    <span style={{ fontSize:"0.8rem", color:C.gray }}>Valor para amortizar</span>
+                    <span style={{ fontSize:"0.88rem", fontWeight:800, color:C.primary }}>{fmt(parseFloat(amorValor))}</span>
+                  </div>
+                  {amorMesInicio>0 && (
+                    <div style={{ display:"flex", justifyContent:"space-between" }}>
+                      <span style={{ fontSize:"0.72rem", color:C.gray }}>Simulando a partir de</span>
+                      <span style={{ fontSize:"0.76rem", fontWeight:700, color:C.grayLight }}>{MESES[amorMesInicio].label}</span>
+                    </div>
+                  )}
                 </div>
                 <h3 style={{ fontSize:"0.92rem", fontWeight:800, color:C.grayLight, marginBottom:4 }}>Qual é o seu objetivo?</h3>
                 <p style={{ fontSize:"0.76rem", color:C.gray, marginBottom:16 }}>Escolha a estratégia que faz mais sentido para o seu momento.</p>
@@ -1565,9 +1597,9 @@ export default function App() {
                     { tipo:"mensal", icon:"💸", titulo:"Meu foco é sobrar mais dinheiro todo mês", desc:"Reduz o valor que sai da conta mensalmente. Sente o alívio no bolso já no próximo mês.", cor:C.primary },
                   ].map(o=>(
                     <button key={o.tipo} onClick={()=>{
-                      const res = calcularAmortizacao(parcelasComRestante, parseFloat(amorValor), o.tipo);
+                      const res = calcularAmortizacao(parcelasParaAmortizar, parseFloat(amorValor), o.tipo);
                       setAmorResultado({ ...res, tipo:o.tipo, cor:o.cor });
-                      registrarEvento("simulacao_amortizacao", { tipo: o.tipo, valor: parseFloat(amorValor)||0 });
+                      registrarEvento("simulacao_amortizacao", { tipo: o.tipo, valor: parseFloat(amorValor)||0, mes_inicio: amorMesInicio });
                     setAmorStep("resultado");
                     }} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:"18px 16px", cursor:"pointer", textAlign:"left", fontFamily:"inherit", display:"flex", gap:14, alignItems:"flex-start" }}>
                       <div style={{ width:48, height:48, borderRadius:14, background:`${o.cor}22`, border:`1px solid ${o.cor}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1.4rem", flexShrink:0 }}>{o.icon}</div>
@@ -1584,7 +1616,7 @@ export default function App() {
 
             {amorStep==="resultado"&&amorResultado&&(
               <div style={{ animation:"fadeIn 0.3s ease" }}>
-                <button onClick={()=>{setAmorStep("menu");setAmorValor("");setAmorResultado(null);}} style={{ background:"none", border:"none", color:C.gray, cursor:"pointer", fontSize:"0.8rem", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", gap:4, padding:0 }}>← Nova simulação</button>
+                <button onClick={()=>{setAmorStep("menu");setAmorValor("");setAmorResultado(null);setAmorMesInicio(0);}} style={{ background:"none", border:"none", color:C.gray, cursor:"pointer", fontSize:"0.8rem", fontFamily:"inherit", marginBottom:14, display:"flex", alignItems:"center", gap:4, padding:0 }}>← Nova simulação</button>
 
                 {amorResultado.semAcao ? (
                   <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.orange}44`, padding:20, textAlign:"center" }}>
@@ -1686,7 +1718,7 @@ export default function App() {
                   </>
                 )}
 
-                <button onClick={()=>{setAmorStep("menu");setAmorValor("");setAmorResultado(null);}} style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.gray, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>
+                <button onClick={()=>{setAmorStep("menu");setAmorValor("");setAmorResultado(null);setAmorMesInicio(0);}} style={{ width:"100%", marginTop:12, padding:"12px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.gray, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>
                   Fazer outra simulação
                 </button>
               </div>

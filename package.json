@@ -17,7 +17,7 @@
     "react-router-dom": "^7.16.0",
     "react-scripts": "5.0.1",
     "stripe": "^22.6.2",
-    "vercel": "^59.11.7",
+    "vercel": "^59.18.0",
     "web-vitals": "^2.1.4",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
@@ -44,5 +44,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "^5.10.0"
+    }
   }
 }

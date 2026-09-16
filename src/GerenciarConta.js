@@ -352,9 +352,24 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                         <div style={{ fontSize:"0.63rem", color:SUB }}>por mês</div>
                       </div>
                     </div>
-                    <button onClick={()=>flash(setMsg,"Em breve! O pagamento está sendo integrado.")}
-                      style={{ width:"100%", padding:"12px", borderRadius:11, border:"none", background:C.primary, color:"#fff", fontWeight:700, fontSize:"0.85rem", cursor:"pointer", fontFamily:"inherit" }}>
-                      {trialAtivo ? "Assinar antes do trial acabar" : "Assinar plano Pro"}
+                    <button onClick={async ()=>{
+                      setLoading(true);
+                      try {
+                        const idToken = await user.getIdToken();
+                        const resp = await fetch("/api/create-checkout-session", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
+                        });
+                        const data = await resp.json();
+                        if (!resp.ok || !data.url) throw new Error(data.error || "Falha ao iniciar checkout");
+                        window.location.href = data.url;
+                      } catch (e) {
+                        flash(setErro, "Não foi possível iniciar o pagamento. Tenta de novo em instantes.");
+                        setLoading(false);
+                      }
+                    }} disabled={loading}
+                      style={{ width:"100%", padding:"12px", borderRadius:11, border:"none", background:C.primary, color:"#fff", fontWeight:700, fontSize:"0.85rem", cursor:"pointer", fontFamily:"inherit", opacity: loading?0.6:1 }}>
+                      {loading ? "Abrindo checkout..." : trialAtivo ? "Assinar antes do trial acabar" : "Assinar plano Pro"}
                     </button>
                   </div>
                 </div>

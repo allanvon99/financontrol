@@ -80,7 +80,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ received: true });
   } catch (err) {
     console.error('Erro processando evento do webhook:', err);
-    return res.status(500).json({ error: 'Erro ao processar webhook', detalhe: err.message, stack: err.stack });
+    return res.status(500).json({ error: 'Erro ao processar webhook' });
   }
 };
 

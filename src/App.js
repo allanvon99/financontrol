@@ -274,9 +274,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
   const [showNovaParcela, setShowNovaParcela] = useState(false);
-  const [showNovoFixo, setShowNovoFixo] = useState(false);
   const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valorTotal:"", parcelas:"", dataInicio:"" });
-  const [novoFixo, setNovoFixo] = useState({ nome:"", valor:"", cartao:"" });
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0, cartao:"" });
   const [expandidosProj, setExpandidosProj] = useState({});
   const [expandidosCartMes, setExpandidosCartMes] = useState({});
@@ -805,7 +803,7 @@ export default function App() {
       setShowUpgrade("simulador");
       return;
     }
-    if (k === "fixos" || k === "parcelas") setExpandidosCart({});
+    if (k === "parcelas") setExpandidosCart({});
     setShowEditar(false);
     setAba(k);
     registrarTela(k);
@@ -1406,146 +1404,20 @@ export default function App() {
           />
         )}
 
-        {/* FIXOS */}
-        {!showEditar && aba==="fixos"&&(
-          <div style={{ animation:"fadeIn 0.25s ease" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-              <h2 style={{ fontSize:"0.95rem", fontWeight:700, margin:0, color:C.grayLight }}>Gastos Fixos</h2>
-              <button onClick={()=>{
-                if(!showNovoFixo && !podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; }
-                setShowNovoFixo(!showNovoFixo);
-              }} style={{ ...btnPri, padding:"7px 12px", fontSize:"0.75rem" }}>
-                {showNovoFixo?"✕ Fechar":"+ Adicionar"}
-              </button>
-            </div>
-            <div onClick={()=>setTelaEspecial("importar")} style={{ display:"flex", alignItems:"center", gap:5, fontSize:"0.72rem", color:C.gray, marginBottom:14, cursor:"pointer", width:"fit-content" }}>
-              📥 ou <span style={{ color:C.primary, textDecoration:"underline", fontWeight:600 }}>importe de uma planilha</span>
-            </div>
-            {showNovoFixo && (
-            <div style={{ background:C.card, borderRadius:12, padding:14, border:`1px solid ${C.primary}55`, marginBottom:12, animation:"fadeIn 0.2s ease" }}>
-              <div style={{ fontSize:"0.68rem", color:C.primary, textTransform:"uppercase", letterSpacing:"0.08em", fontWeight:700, marginBottom:10 }}>Novo gasto fixo</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  <input placeholder="Descrição" value={novoFixo.nome} onChange={e=>setNovoFixo(f=>({...f,nome:e.target.value}))} style={inp()}/>
-                  <input type="number" placeholder="Valor (R$)" value={novoFixo.valor} onChange={e=>setNovoFixo(f=>({...f,valor:e.target.value}))} style={inp()}/>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  <select value={novoFixo.cartao||""} onChange={e=>setNovoFixo(f=>({...f,cartao:e.target.value}))} style={inp()}>
-                    <option value="">Sem cartão (opcional)</option>
-                    {cartoes.map(c=><option key={c.nome} value={c.nome}>{c.nome}</option>)}
-                  </select>
-                  <select value={novoFixo.categoria||""} onChange={e=>setNovoFixo(f=>({...f,categoria:e.target.value}))} style={inp()}>
-                    <option value="">Categoria</option>
-                    {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
-                  </select>
-                </div>
-                <button onClick={()=>{ if(!novoFixo.nome||!novoFixo.valor)return; if(!podeAdicionar(planoAtualObj,"fixos",fixos.length)){ setShowUpgrade("fixos"); return; } setFixos(f=>[...f,{...novoFixo,id:Date.now(),valor:parseFloat(novoFixo.valor)}]); setNovoFixo({nome:"",valor:"",cartao:"",categoria:""}); setShowNovoFixo(false); }} style={btnPri}>Adicionar</button>
-              </div>
-            </div>
-            )}
-            {fixos.length===0 ? (
-              <div style={{ textAlign:"center", color:C.gray, padding:"50px 0" }}>
-                <p style={{ fontSize:"2rem", margin:"0 0 8px" }}>📌</p>
-                <p style={{ fontSize:"0.85rem" }}>Nenhum gasto fixo cadastrado</p>
-              </div>
-            ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                {(()=>{
-                  const grupos = {};
-                  fixos.forEach(f=>{
-                    const k = f.cartao || "__sem__";
-                    if(!grupos[k]) grupos[k]=[];
-                    grupos[k].push(f);
-                  });
-                  const ordem = [...cartoes.map(x=>x.nome).filter(n=>grupos[n]), ...(grupos["__sem__"]?["__sem__"]:[])];
-                  return ordem.map(k=>{
-                    const itens = grupos[k]||[];
-                    const totalG = itens.reduce((s,f)=>s+Number(f.valor),0);
-                    const aberto = expandidosCart["fixo_"+k]===true;
-                    const nomeG = k==="__sem__" ? "Sem cartão" : k;
-                    return (
-                      <div key={k} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                        <div onClick={()=>setExpandidosCart(p=>({...p,["fixo_"+k]:p["fixo_"+k]!==true}))}
-                          style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
-                          {k!=="__sem__"
-                            ? <CartaoLogo grupo={k} cartoes={cartoes} size={32}/>
-                            : <div style={{ width:32, height:32, borderRadius:8, background:C.surface, border:`1px solid ${C.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"1rem", flexShrink:0 }}>📌</div>}
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:"0.85rem", fontWeight:700, color:C.grayLight }}>{nomeG}</div>
-                            <div style={{ fontSize:"0.62rem", color:C.gray }}>{itens.length} gasto(s) fixo(s)</div>
-                          </div>
-                          <div style={{ fontSize:"0.88rem", fontWeight:800, color:C.orange, marginRight:8 }}>{fmt(totalG)}</div>
-                          <span style={{ color:C.gray, fontSize:"0.72rem" }}>{aberto?"▲":"▼"}</span>
-                        </div>
-                        {aberto && (
-                          <div style={{ padding:"0 12px 12px" }}>
-                            <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:8, display:"flex", flexDirection:"column", gap:5 }}>
-                              {itens.map(f=>(
-                                <div key={f.id} style={{ background:C.surface, borderRadius:9, border:`1px solid ${C.border}`, overflow:"hidden" }}>
-                                  {editandoFixo?.id===f.id?(
-                                    <div style={{ padding:"11px" }}>
-                                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                                          <input value={editandoFixo.nome} onChange={e=>setEditandoFixo(x=>({...x,nome:e.target.value}))} style={inp()}/>
-                                          <input type="number" value={editandoFixo.valor} onChange={e=>setEditandoFixo(x=>({...x,valor:e.target.value}))} style={inp()}/>
-                                        </div>
-                                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                                          <select value={editandoFixo.cartao||""} onChange={e=>setEditandoFixo(x=>({...x,cartao:e.target.value}))} style={inp()}>
-                                            <option value="">Sem cartão</option>
-                                            {cartoes.map(x=><option key={x.nome} value={x.nome}>{x.nome}</option>)}
-                                          </select>
-                                          <select value={editandoFixo.categoria||""} onChange={e=>setEditandoFixo(x=>({...x,categoria:e.target.value}))} style={inp()}>
-                                            <option value="">Categoria</option>
-                                            {categorias.map(cat=><option key={cat.id} value={cat.id}>{cat.emoji} {cat.nome}</option>)}
-                                          </select>
-                                        </div>
-                                        <div style={{ display:"flex", gap:8 }}>
-                                          <button onClick={salvarFixo} style={{ flex:2,...btnPri,padding:"9px" }}>✓ Salvar</button>
-                                          <button onClick={()=>setEditandoFixo(null)} style={{ flex:1,padding:"9px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.gray,cursor:"pointer",fontFamily:"inherit" }}>Cancelar</button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ):(
-                                    <div style={{ padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                                      <div style={{ flex:1, minWidth:0 }}>
-                                        <div style={{ fontSize:"0.82rem", fontWeight:500, color:C.grayLight }}>{f.nome}</div>
-                                        {f.categoria&&(()=>{ const cat=categorias.find(x=>x.id===f.categoria); return cat?<span style={{ fontSize:"0.6rem", color:cat.cor, background:cat.cor+"22", borderRadius:20, padding:"1px 6px", marginTop:3, display:"inline-block" }}>{cat.emoji} {cat.nome}</span>:null; })()}
-                                      </div>
-                                      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-                                        <span style={{ fontSize:"0.85rem", color:C.orange, fontWeight:700 }}>{fmt(f.valor)}</span>
-                                        <button onClick={()=>setEditandoFixo({...f})} style={{ background:"none",border:"none",color:C.gray,cursor:"pointer",fontSize:"0.85rem",padding:"4px" }}>✏️</button>
-                                        <button onClick={()=>setConfirmRemover({tipo:"fixo",id:f.id,nome:f.nome})} style={{ background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:"1rem",padding:"4px" }}>✕</button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-                <div style={{ background:C.surface, borderRadius:10, padding:"11px 14px", display:"flex", justifyContent:"space-between", border:`1px solid ${C.border}`, marginTop:4 }}>
-                  <span style={{ fontSize:"0.84rem", fontWeight:700, color:C.grayLight }}>Total/mês</span>
-                  <span style={{ fontSize:"0.88rem", color:C.orange, fontWeight:800 }}>{fmt(totalFixos)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* GASTOS DO MÊS */}
         {!showEditar && aba==="gastos"&&(
           <GastosDoMes
             extras={extras} setExtras={setExtras}
+            fixos={fixos} setFixos={setFixos}
+            editandoFixo={editandoFixo} setEditandoFixo={setEditandoFixo}
+            salvarFixo={salvarFixo}
             cartoes={cartoes} categorias={categorias} MESES={MESES}
             editandoExtra={editandoExtra} setEditandoExtra={setEditandoExtra}
             salvarExtra={salvarExtra} C={C} inp={inp} btnPri={btnPri}
             CartaoLogo={CartaoLogo}
             planoAtualObj={planoAtualObj} podeAdicionar={podeAdicionar}
             onLimiteAtingido={()=>setShowUpgrade("extras")}
+            onLimiteAtingidoFixo={()=>setShowUpgrade("fixos")}
             onImportar={()=>setTelaEspecial("importar")}
             onPedirRemocao={setConfirmRemover}
           />
@@ -1761,7 +1633,6 @@ export default function App() {
           { k:"projecao", icon:"📊", label:"Projeção" },
           { k:"parcelas", icon:"🧾", label:"Parcelas" },
           { k:"cadastros", icon:"⚙️", label:"Cadastros" },
-          { k:"fixos", icon:"📌", label:"Fixos" },
           { k:"gastos", icon:"🗓️", label:"Gastos" },
           { k:"receita", icon:"💰", label:"Receita" },
           { k:"amortizacao", icon:"💸", label:"Simular" },

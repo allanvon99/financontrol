@@ -46,10 +46,23 @@ module.exports = async (req, res) => {
         const session = event.data.object;
         const uid = session.client_reference_id || session.metadata?.uid;
         if (uid) {
-          await db.collection('usuarios').doc(uid).set({
+          const dadosPlano = {
             plano: 'pro',
             assinaturaId: session.subscription,
-          }, { merge: true });
+          };
+          // Busca a data de renovação diretamente na assinatura recém-criada,
+          // já que o evento de checkout não traz current_period_end.
+          if (session.subscription) {
+            try {
+              const subscription = await stripe.subscriptions.retrieve(session.subscription);
+              if (subscription.current_period_end) {
+                dadosPlano.renovacaoEm = subscription.current_period_end * 1000;
+              }
+            } catch (e) {
+              console.error('Não foi possível buscar a assinatura para pegar a data de renovação:', e.message);
+            }
+          }
+          await db.collection('usuarios').doc(uid).set(dadosPlano, { merge: true });
         }
         break;
       }
@@ -60,6 +73,7 @@ module.exports = async (req, res) => {
           const ativo = sub.status === 'active' || sub.status === 'trialing';
           await db.collection('usuarios').doc(uid).set({
             plano: ativo ? 'pro' : 'free',
+            renovacaoEm: ativo && sub.current_period_end ? sub.current_period_end * 1000 : null,
           }, { merge: true });
         }
         break;
@@ -70,6 +84,7 @@ module.exports = async (req, res) => {
         if (uid) {
           await db.collection('usuarios').doc(uid).set({
             plano: 'free',
+            renovacaoEm: null,
           }, { merge: true });
         }
         break;

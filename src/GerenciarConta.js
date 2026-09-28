@@ -36,6 +36,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
   const [senhaDelete, setSenhaDelete] = useState("");
   const [planos, setPlanos] = useState(PLANOS_PADRAO);
   const [planoUsuario, setPlanoUsuario] = useState("free");
+  const [renovacaoEm, setRenovacaoEm] = useState(null);
   const [docLegal, setDocLegal] = useState(null);
 
   useEffect(()=>{
@@ -48,6 +49,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
             const d = snap.data();
             setDados({ nome:d.nome||"", sobrenome:d.sobrenome||"" });
             setPlanoUsuario(d.plano || "free");
+            setRenovacaoEm(d.renovacaoEm || null);
           }
         } catch(e){ console.error(e); }
       }
@@ -144,8 +146,20 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
 
   const pro = planos.pro;
   const free = planos.free;
-  const ehPro = planoAtivo === "pro" || planoUsuario === "pro";
-  const mostrarUpsell = !ehPro || trialAtivo;
+  // planoUsuario vem direto do Firestore (gravado pelo webhook do Stripe) — é a fonte
+  // da verdade sobre pagamento real, diferente de trialAtivo que é só uma janela de datas.
+  const assinaturaPaga = planoUsuario === "pro";
+  const ehPro = planoAtivo === "pro" || assinaturaPaga;
+  // Só é "trial sem assinatura" se ainda dentro da janela de trial E sem pagamento confirmado —
+  // isso evita continuar mostrando "Trial" e o botão de assinar pra quem já pagou.
+  const emTrialSemAssinatura = trialAtivo && !assinaturaPaga;
+  const mostrarUpsell = !ehPro || emTrialSemAssinatura;
+  const fmtDataRenovacao = (ts) => {
+    if (!ts) return null;
+    const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === "number" ? ts : Number(ts));
+    if (!ms) return null;
+    return new Date(ms).toLocaleDateString("pt-BR");
+  };
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, animation:"slideIn 0.25s ease" }}>
@@ -204,7 +218,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                 <div style={{ fontSize:"1rem", fontWeight:800, color:TXT }}>{dados.nome} {dados.sobrenome}</div>
                 <div style={{ fontSize:"0.75rem", color:SUB, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user?.email}</div>
                 <div style={{ fontSize:"0.66rem", color: ehPro ? C.primaryLight : C.green, marginTop:3 }}>
-                  ● Plano {trialAtivo ? `${pro.nome} (Trial · ${diasTrialRestantes}d)` : ehPro ? pro.nome : free.nome}
+                  ● Plano {emTrialSemAssinatura ? `${pro.nome} (Trial · ${diasTrialRestantes}d)` : ehPro ? pro.nome : free.nome}
                 </div>
               </div>
             </div>
@@ -276,11 +290,13 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                 <div>
                   <div style={{ fontSize:"0.66rem", color:SUB, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:3 }}>Seu plano atual</div>
                   <div style={{ fontSize:"1.15rem", fontWeight:800, color: ehPro?C.primaryLight:TXT }}>
-                    {trialAtivo ? `${pro.nome} (Trial)` : ehPro ? pro.nome : free.nome}
+                    {emTrialSemAssinatura ? `${pro.nome} (Trial)` : ehPro ? pro.nome : free.nome}
                   </div>
                 </div>
-                <div style={{ background: trialAtivo ? `${C.orange}20` : C.surface, border:`1px solid ${trialAtivo?C.orange:C.border}`, borderRadius:20, padding:"5px 12px", fontSize:"0.7rem", color: trialAtivo?C.orange:SUB, fontWeight:600 }}>
-                  {trialAtivo ? `${diasTrialRestantes} dia${diasTrialRestantes===1?"":"s"} restante${diasTrialRestantes===1?"":"s"}` : "Ativo"}
+                <div style={{ background: emTrialSemAssinatura ? `${C.orange}20` : C.surface, border:`1px solid ${emTrialSemAssinatura?C.orange:C.border}`, borderRadius:20, padding:"5px 12px", fontSize:"0.7rem", color: emTrialSemAssinatura?C.orange:SUB, fontWeight:600 }}>
+                  {emTrialSemAssinatura
+                    ? `${diasTrialRestantes} dia${diasTrialRestantes===1?"":"s"} restante${diasTrialRestantes===1?"":"s"}`
+                    : (assinaturaPaga && fmtDataRenovacao(renovacaoEm) ? `Renova em ${fmtDataRenovacao(renovacaoEm)}` : "Ativo")}
                 </div>
               </div>
             </div>
@@ -339,12 +355,12 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
             {mostrarUpsell && (
               <>
                 <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
-                  <div style={{ background:C.card, borderRadius:14, border:`1px solid ${trialAtivo?C.orange+"55":C.border}`, padding:16 }}>
+                  <div style={{ background:C.card, borderRadius:14, border:`1px solid ${emTrialSemAssinatura?C.orange+"55":C.border}`, padding:16 }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
                       <div>
                         <div style={{ fontSize:"0.92rem", fontWeight:800, color:TXT }}>{pro.nome} Mensal</div>
                         <div style={{ fontSize:"0.68rem", color:SUB, marginTop:2 }}>
-                          {trialAtivo ? "Garanta o acesso Pro quando o trial acabar" : "Cancele quando quiser"}
+                          {emTrialSemAssinatura ? "Garanta o acesso Pro quando o trial acabar" : "Cancele quando quiser"}
                         </div>
                       </div>
                       <div style={{ textAlign:"right" }}>
@@ -369,7 +385,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                       }
                     }} disabled={loading}
                       style={{ width:"100%", padding:"12px", borderRadius:11, border:"none", background:C.primary, color:"#fff", fontWeight:700, fontSize:"0.85rem", cursor:"pointer", fontFamily:"inherit", opacity: loading?0.6:1 }}>
-                      {loading ? "Abrindo checkout..." : trialAtivo ? "Assinar antes do trial acabar" : "Assinar plano Pro"}
+                      {loading ? "Abrindo checkout..." : emTrialSemAssinatura ? "Assinar antes do trial acabar" : "Assinar plano Pro"}
                     </button>
                   </div>
                 </div>

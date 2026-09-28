@@ -39,6 +39,8 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
   const [renovacaoEm, setRenovacaoEm] = useState(null);
   const [assinouEm, setAssinouEm] = useState(null);
   const [confirmReembolso, setConfirmReembolso] = useState(false);
+  const [canceladoNoFimDoPeriodo, setCanceladoNoFimDoPeriodo] = useState(false);
+  const [confirmCancelarNormal, setConfirmCancelarNormal] = useState(false);
   const [docLegal, setDocLegal] = useState(null);
 
   useEffect(()=>{
@@ -53,6 +55,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
             setPlanoUsuario(d.plano || "free");
             setRenovacaoEm(d.renovacaoEm || null);
             setAssinouEm(d.assinouEm || null);
+            setCanceladoNoFimDoPeriodo(d.canceladoNoFimDoPeriodo === true);
           }
         } catch(e){ console.error(e); }
       }
@@ -192,6 +195,30 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
     }
     setLoading(false);
   };
+
+  const alterarCancelamentoNormal = async (action) => {
+    setLoading(true);
+    try {
+      const idToken = await user.getIdToken();
+      const resp = await fetch("/api/cancelar-assinatura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
+        body: JSON.stringify({ action }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Não foi possível concluir");
+      setCanceladoNoFimDoPeriodo(data.canceladoNoFimDoPeriodo);
+      setConfirmCancelarNormal(false);
+      flash(setMsg, action === "cancelar"
+        ? "Assinatura cancelada. Você mantém acesso Pro até o fim do período já pago."
+        : "Assinatura reativada — vai continuar renovando normalmente.");
+    } catch (e) {
+      flash(setErro, e.message || "Não foi possível concluir. Tente novamente.");
+    }
+    setLoading(false);
+  };
+  const cancelarAssinatura = () => alterarCancelamentoNormal("cancelar");
+  const reativarAssinatura = () => alterarCancelamentoNormal("reativar");
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, animation:"slideIn 0.25s ease" }}>
@@ -358,6 +385,49 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                       <button onClick={cancelarComReembolso} disabled={loading}
                         style={{ flex:1, padding:"11px", borderRadius:11, border:"none", background:C.orange, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem", opacity:loading?0.6:1 }}>
                         {loading?"Processando...":"Confirmar"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {assinaturaPaga && !dentroPrazoArrependimento && (
+              <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:16, marginBottom:14 }}>
+                {canceladoNoFimDoPeriodo ? (
+                  <>
+                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:TXT, marginBottom:5 }}>Assinatura cancelada</div>
+                    <div style={{ fontSize:"0.74rem", color:SUB, lineHeight:1.55, marginBottom:12 }}>
+                      Sua assinatura não vai renovar{fmtDataRenovacao(renovacaoEm) ? ` — você mantém acesso Pro até ${fmtDataRenovacao(renovacaoEm)}` : ""}. Mudou de ideia?
+                    </div>
+                    <button onClick={reativarAssinatura} disabled={loading}
+                      style={{ width:"100%", padding:"11px", borderRadius:11, border:`1px solid ${C.primary}`, background:"transparent", color:C.primaryLight, fontWeight:700, fontSize:"0.82rem", cursor:"pointer", fontFamily:"inherit" }}>
+                      {loading?"Aguarde...":"Reativar assinatura"}
+                    </button>
+                  </>
+                ) : !confirmCancelarNormal ? (
+                  <>
+                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:TXT, marginBottom:5 }}>Cancelar assinatura</div>
+                    <div style={{ fontSize:"0.74rem", color:SUB, lineHeight:1.55, marginBottom:12 }}>
+                      Você continua com acesso Pro até o fim do período já pago{fmtDataRenovacao(renovacaoEm) ? ` (${fmtDataRenovacao(renovacaoEm)})` : ""}, sem reembolso do tempo restante. Depois disso, volta pro plano gratuito.
+                    </div>
+                    <button onClick={()=>setConfirmCancelarNormal(true)} disabled={loading}
+                      style={{ width:"100%", padding:"11px", borderRadius:11, border:`1px solid ${C.border}`, background:"transparent", color:SUB, fontWeight:600, fontSize:"0.82rem", cursor:"pointer", fontFamily:"inherit" }}>
+                      Cancelar assinatura
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.red, marginBottom:5 }}>Confirmar cancelamento?</div>
+                    <div style={{ fontSize:"0.74rem", color:SUB, lineHeight:1.55, marginBottom:12 }}>
+                      Você não será mais cobrado, mas também não haverá reembolso do período atual. O acesso Pro continua até {fmtDataRenovacao(renovacaoEm) || "o fim do período já pago"}.
+                    </div>
+                    <div style={{ display:"flex", gap:9 }}>
+                      <button onClick={()=>setConfirmCancelarNormal(false)} disabled={loading}
+                        style={{ flex:1, padding:"11px", borderRadius:11, border:`1px solid ${C.border}`, background:"transparent", color:SUB, fontWeight:600, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>Voltar</button>
+                      <button onClick={cancelarAssinatura} disabled={loading}
+                        style={{ flex:1, padding:"11px", borderRadius:11, border:"none", background:C.red, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem", opacity:loading?0.6:1 }}>
+                        {loading?"Processando...":"Confirmar cancelamento"}
                       </button>
                     </div>
                   </>

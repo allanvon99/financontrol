@@ -75,6 +75,7 @@ module.exports = async (req, res) => {
           await db.collection('usuarios').doc(uid).set({
             plano: ativo ? 'pro' : 'free',
             renovacaoEm: ativo && sub.current_period_end ? sub.current_period_end * 1000 : null,
+            canceladoNoFimDoPeriodo: ativo ? !!sub.cancel_at_period_end : false,
           }, { merge: true });
         }
         break;
@@ -87,6 +88,7 @@ module.exports = async (req, res) => {
             plano: 'free',
             renovacaoEm: null,
             assinouEm: null,
+            canceladoNoFimDoPeriodo: false,
           }, { merge: true });
         }
         break;

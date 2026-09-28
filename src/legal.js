@@ -1,5 +1,5 @@
-export const VERSAO_DOCS = "1.0";
-export const DATA_VIGENCIA = "6 de agosto de 2026";
+export const VERSAO_DOCS = "1.1";
+export const DATA_VIGENCIA = "27 de setembro de 2026";
 export const EMAIL_CONTATO = "allanvon99@gmail.com";
 
 export const POLITICA_PRIVACIDADE = [
@@ -77,7 +77,7 @@ export const TERMOS_USO = [
   { t:"Planos e pagamento", p:[
     `Oferecemos um plano gratuito com funcionalidades limitadas e planos pagos com recursos adicionais.`,
     `Assinaturas são renovadas automaticamente ao fim de cada ciclo, salvo cancelamento prévio. Você pode cancelar a qualquer momento e continuará com acesso até o fim do período já pago.`,
-    `Conforme o Código de Defesa do Consumidor, você pode desistir da contratação em até 7 dias, com reembolso integral.`,
+    `Direito de arrependimento: por se tratar de contratação feita à distância, você pode desistir da assinatura em até 7 (sete) dias corridos após a contratação, sem precisar justificar o motivo, com reembolso integral do valor pago (art. 49 do Código de Defesa do Consumidor e Decreto 7.962/2013). Você pode exercer esse direito diretamente pelo app, em Gerenciar conta > Plano, com cancelamento e reembolso automáticos; se preferir, também pode pedir por email em ${EMAIL_CONTATO}.`,
     `Preços podem mudar, com aviso prévio de 30 dias; alterações não afetam ciclos já pagos.`,
   ]},
   { t:"Disponibilidade", p:[

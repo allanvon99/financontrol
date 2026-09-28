@@ -37,6 +37,8 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
   const [planos, setPlanos] = useState(PLANOS_PADRAO);
   const [planoUsuario, setPlanoUsuario] = useState("free");
   const [renovacaoEm, setRenovacaoEm] = useState(null);
+  const [assinouEm, setAssinouEm] = useState(null);
+  const [confirmReembolso, setConfirmReembolso] = useState(false);
   const [docLegal, setDocLegal] = useState(null);
 
   useEffect(()=>{
@@ -50,6 +52,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
             setDados({ nome:d.nome||"", sobrenome:d.sobrenome||"" });
             setPlanoUsuario(d.plano || "free");
             setRenovacaoEm(d.renovacaoEm || null);
+            setAssinouEm(d.assinouEm || null);
           }
         } catch(e){ console.error(e); }
       }
@@ -159,6 +162,35 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
     const ms = ts?.toMillis ? ts.toMillis() : (typeof ts === "number" ? ts : Number(ts));
     if (!ms) return null;
     return new Date(ms).toLocaleDateString("pt-BR");
+  };
+
+  // Direito de arrependimento (CDC art. 49): 7 dias corridos a partir da contratação,
+  // com reembolso integral e sem necessidade de justificativa.
+  const PRAZO_ARREPENDIMENTO_MS = 7 * 24 * 60 * 60 * 1000;
+  const assinouEmMs = assinouEm?.toMillis ? assinouEm.toMillis() : (assinouEm ? Number(assinouEm) : null);
+  const decorridoDesdeAssinatura = assinouEmMs ? Date.now() - assinouEmMs : null;
+  const dentroPrazoArrependimento = assinaturaPaga && assinouEmMs != null && decorridoDesdeAssinatura <= PRAZO_ARREPENDIMENTO_MS;
+  const diasRestantesArrependimento = dentroPrazoArrependimento ? Math.max(0, Math.ceil((PRAZO_ARREPENDIMENTO_MS - decorridoDesdeAssinatura) / 86400000)) : 0;
+
+  const cancelarComReembolso = async () => {
+    setLoading(true);
+    try {
+      const idToken = await user.getIdToken();
+      const resp = await fetch("/api/cancelar-reembolso", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Não foi possível concluir o cancelamento");
+      setPlanoUsuario("free");
+      setRenovacaoEm(null);
+      setAssinouEm(null);
+      setConfirmReembolso(false);
+      flash(setMsg, "Assinatura cancelada e reembolso solicitado. O valor volta pro seu cartão em alguns dias úteis.");
+    } catch (e) {
+      flash(setErro, e.message || "Não foi possível concluir o cancelamento. Tente novamente ou fale com o suporte.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -300,6 +332,38 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
                 </div>
               </div>
             </div>
+
+            {dentroPrazoArrependimento && (
+              <div style={{ background:`${C.orange}10`, border:`1px solid ${C.orange}44`, borderRadius:14, padding:16, marginBottom:14 }}>
+                {!confirmReembolso ? (
+                  <>
+                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:TXT, marginBottom:5 }}>Direito de arrependimento (7 dias)</div>
+                    <div style={{ fontSize:"0.74rem", color:SUB, lineHeight:1.55, marginBottom:12 }}>
+                      Você assinou há pouco tempo — ainda pode cancelar e receber o valor pago de volta integralmente, sem precisar justificar. Restam {diasRestantesArrependimento} dia{diasRestantesArrependimento===1?"":"s"}.
+                    </div>
+                    <button onClick={()=>setConfirmReembolso(true)} disabled={loading}
+                      style={{ width:"100%", padding:"11px", borderRadius:11, border:`1px solid ${C.orange}`, background:"transparent", color:C.orange, fontWeight:700, fontSize:"0.82rem", cursor:"pointer", fontFamily:"inherit" }}>
+                      Cancelar e pedir reembolso
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize:"0.82rem", fontWeight:700, color:C.orange, marginBottom:5 }}>Confirmar cancelamento?</div>
+                    <div style={{ fontSize:"0.74rem", color:SUB, lineHeight:1.55, marginBottom:12 }}>
+                      Sua assinatura Pro será cancelada agora e o valor pago será integralmente estornado no seu cartão em alguns dias úteis.
+                    </div>
+                    <div style={{ display:"flex", gap:9 }}>
+                      <button onClick={()=>setConfirmReembolso(false)} disabled={loading}
+                        style={{ flex:1, padding:"11px", borderRadius:11, border:`1px solid ${C.border}`, background:"transparent", color:SUB, fontWeight:600, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem" }}>Voltar</button>
+                      <button onClick={cancelarComReembolso} disabled={loading}
+                        style={{ flex:1, padding:"11px", borderRadius:11, border:"none", background:C.orange, color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"inherit", fontSize:"0.82rem", opacity:loading?0.6:1 }}>
+                        {loading?"Processando...":"Confirmar"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {!ehPro && (
               <Bloco C={C} titulo="Seu uso no plano gratuito">

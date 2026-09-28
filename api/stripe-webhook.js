@@ -49,6 +49,7 @@ module.exports = async (req, res) => {
           const dadosPlano = {
             plano: 'pro',
             assinaturaId: session.subscription,
+            assinouEm: Date.now(), // usado pra calcular a janela de 7 dias de arrependimento (CDC art. 49)
           };
           // Busca a data de renovação diretamente na assinatura recém-criada,
           // já que o evento de checkout não traz current_period_end.
@@ -85,6 +86,7 @@ module.exports = async (req, res) => {
           await db.collection('usuarios').doc(uid).set({
             plano: 'free',
             renovacaoEm: null,
+            assinouEm: null,
           }, { merge: true });
         }
         break;

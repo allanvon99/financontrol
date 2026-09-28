@@ -269,6 +269,7 @@ export default function App() {
   const [modoSeguranca, setModoSeguranca] = useState(false);
   const dadosBrutosCarregados = useRef(null); // snapshot exato do que veio do Firestore ao entrar
   const primeiroSalvamentoDaSessao = useRef(true);
+  const primeiraExecCategoriasRef = useRef(true); // evita regravar categorias/saudeConfig logo após o carregamento
   const [saveStatus, setSaveStatus] = useState("idle");
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
@@ -439,6 +440,7 @@ export default function App() {
         setLoadStatus("loading"); // evita mostrar dado de uma conta anterior enquanto a nova carrega
         if (u) {
           primeiroSalvamentoDaSessao.current = true;
+          primeiraExecCategoriasRef.current = true;
           dadosBrutosCarregados.current = null;
           setParcelas([]);
           setFixos([]);
@@ -618,13 +620,21 @@ export default function App() {
 
   // Salva categorias e saúde quando mudam
   useEffect(()=>{
-    if (loadStatus!=="loaded") return;
+    if (loadStatus!=="loaded" || modoSeguranca) return;
+    // Não salva na primeiríssima execução pós-carregamento: nesse momento o valor
+    // já é exatamente o que veio do Firestore (ou o padrão, se o usuário é novo),
+    // então regravar aqui só cria risco de sobrescrever dados reais por uma
+    // condição de corrida no carregamento. Só grava a partir de uma mudança real.
+    if (primeiraExecCategoriasRef.current) {
+      primeiraExecCategoriasRef.current = false;
+      return;
+    }
     const t = setTimeout(()=>{
       if (!auth.currentUser) return;
       setDoc(doc(db,"usuarios",auth.currentUser.uid),{ categorias, saudeConfig },{ merge:true });
     },800);
     return ()=>clearTimeout(t);
-  },[categorias,saudeConfig,loadStatus]);
+  },[categorias,saudeConfig,loadStatus,modoSeguranca]);
 
   const totalFixos = useMemo(()=>fixos.reduce((s,f)=>s+Number(f.valor),0),[fixos]);
 

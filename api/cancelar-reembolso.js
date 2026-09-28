@@ -69,6 +69,7 @@ module.exports = async (req, res) => {
       renovacaoEm: null,
       assinouEm: null,
       reembolsoRealizadoEm: Date.now(),
+      trialUsadoAnteriormente: true,
     }, { merge: true });
 
     return res.status(200).json({ ok: true, reembolsado: !!paymentIntentId });

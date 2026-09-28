@@ -307,6 +307,7 @@ export default function App() {
   const [raioXMes, setRaioXMes] = useState(null);
   const [vvOffset, setVvOffset] = useState(0);
   const [mostrarFeedback, setMostrarFeedback] = useState(false);
+  const [mostrarSucessoAssinatura, setMostrarSucessoAssinatura] = useState(false);
 
   useEffect(()=>{
     const vv = window.visualViewport;
@@ -334,6 +335,16 @@ export default function App() {
   useEffect(()=>{
     if (new URLSearchParams(window.location.search).get("testarSentry") === "1") {
       registrarErro(new Error("Teste manual de monitoramento — pode ignorar"), { origem: "teste_manual" });
+    }
+  }, []);
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "sucesso") {
+      setMostrarSucessoAssinatura(true);
+      params.delete("checkout");
+      const resto = params.toString();
+      const novaUrl = window.location.pathname + (resto ? `?${resto}` : "") + window.location.hash;
+      window.history.replaceState({}, "", novaUrl);
     }
   }, []);
   const [mesOffset, setMesOffset] = useState(0); // offset para meses retroativos
@@ -923,6 +934,24 @@ export default function App() {
                 setConfirmRemover(null);
               }} style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:C.red, color:"#fff", cursor:"pointer", fontFamily:"inherit", fontWeight:700 }}>Remover</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mensagem de boas-vindas ao Pro, exibida ao voltar do checkout da Stripe */}
+      {mostrarSucessoAssinatura && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1100, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+          onClick={()=>setMostrarSucessoAssinatura(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:18, padding:"28px 24px", width:"100%", maxWidth:340, border:`1px solid ${C.primary}55`, textAlign:"center" }}>
+            <div style={{ fontSize:"2.2rem", marginBottom:10 }}>🎉</div>
+            <h3 style={{ fontSize:"1.05rem", fontWeight:800, color:C.grayLight, margin:"0 0 8px" }}>Bem-vindo(a) ao Pro!</h3>
+            <p style={{ fontSize:"0.85rem", color:C.gray, margin:"0 0 22px", lineHeight:1.55 }}>
+              Seu pagamento foi confirmado e todos os recursos Pro já estão liberados na sua conta. Aproveita!
+            </p>
+            <button onClick={()=>setMostrarSucessoAssinatura(false)}
+              style={{ width:"100%", padding:"13px", borderRadius:11, border:"none", background:"linear-gradient(135deg,#1d6fa4,#2188c9)", color:"#fff", fontWeight:700, fontSize:"0.88rem", cursor:"pointer", fontFamily:"inherit" }}>
+              Começar a usar
+            </button>
           </div>
         </div>
       )}

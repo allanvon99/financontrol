@@ -886,6 +886,7 @@ export default function App() {
         C={C} onVoltar={()=>setTelaEspecial(null)} abaInicial={abaConta}
         dadosApp={{ parcelas, fixos, extras, rendasPorMes, extrasReceita, cartoes, categorias, saudeConfig }}
         planoAtivo={planoAtivo} trialAtivo={trialAtivo} diasTrialRestantes={diasTrialRestantes}
+        onPlanoAtualizado={setPlanoDb}
       />
     </div>
   );

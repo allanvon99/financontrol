@@ -18,6 +18,34 @@ const db = getFirestore();
 
 const PRAZO_ARREPENDIMENTO_MS = 7 * 24 * 60 * 60 * 1000; // CDC art. 49
 
+async function encontrarPaymentIntentId(subscription) {
+  const invoiceRef = subscription.latest_invoice;
+  const invoiceId = typeof invoiceRef === 'string' ? invoiceRef : invoiceRef && invoiceRef.id;
+  if (!invoiceId) return null;
+
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId, { expand: ['payment_intent'] });
+    if (invoice.payment_intent) {
+      return typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent.id;
+    }
+  } catch (e) {
+    console.error('Falha ao expandir payment_intent da invoice:', e.message);
+  }
+
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId, { expand: ['payments.data.payment.payment_intent'] });
+    const pagamento = invoice.payments && invoice.payments.data && invoice.payments.data[0] && invoice.payments.data[0].payment;
+    const pi = pagamento && pagamento.payment_intent;
+    if (pi) {
+      return typeof pi === 'string' ? pi : pi.id;
+    }
+  } catch (e) {
+    console.error('Falha ao buscar invoice.payments:', e.message);
+  }
+
+  return null;
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -51,11 +79,22 @@ module.exports = async (req, res) => {
     }
 
     const subscription = await stripe.subscriptions.retrieve(d.assinaturaId, { expand: ['latest_invoice'] });
-    const invoice = subscription.latest_invoice;
-    const paymentIntentId = invoice && typeof invoice === 'object' ? invoice.payment_intent : null;
+    const paymentIntentId = await encontrarPaymentIntentId(subscription);
 
-    if (paymentIntentId) {
+    if (!paymentIntentId) {
+      console.error('Não foi possível localizar o pagamento para reembolso. uid=', uid, 'assinaturaId=', d.assinaturaId);
+      return res.status(500).json({
+        error: 'Não conseguimos localizar automaticamente o pagamento para reembolsar. Nada foi cancelado — fale com o suporte pelo email de contato pra concluirmos manualmente.',
+      });
+    }
+
+    try {
       await stripe.refunds.create({ payment_intent: paymentIntentId });
+    } catch (e) {
+      console.error('Erro ao criar reembolso na Stripe:', e.message);
+      return res.status(500).json({
+        error: 'Não conseguimos processar o reembolso automaticamente. Nada foi cancelado — fale com o suporte pelo email de contato pra concluirmos manualmente.',
+      });
     }
 
     try {
@@ -72,7 +111,7 @@ module.exports = async (req, res) => {
       trialUsadoAnteriormente: true,
     }, { merge: true });
 
-    return res.status(200).json({ ok: true, reembolsado: !!paymentIntentId });
+    return res.status(200).json({ ok: true, reembolsado: true });
   } catch (e) {
     console.error('Erro ao processar cancelamento com reembolso:', e);
     return res.status(500).json({ error: 'Erro ao processar o cancelamento. Tente novamente em instantes ou fale com o suporte.' });

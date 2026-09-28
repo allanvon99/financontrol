@@ -18,7 +18,7 @@ function Bloco({ titulo, children, cor, C }) {
   );
 }
 
-export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, planoAtivo, trialAtivo, diasTrialRestantes }) {
+export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, planoAtivo, trialAtivo, diasTrialRestantes, onPlanoAtualizado }) {
   const user = auth.currentUser;
   const TXT = C.grayLight || C.text;
   const SUB = C.gray || C.textSub;
@@ -189,7 +189,8 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
       setRenovacaoEm(null);
       setAssinouEm(null);
       setConfirmReembolso(false);
-      flash(setMsg, "Assinatura cancelada e reembolso solicitado. O valor volta pro seu cartão em alguns dias úteis.");
+      if (onPlanoAtualizado) onPlanoAtualizado("free");
+      flash(setMsg, "Assinatura cancelada e reembolso confirmado. O valor volta pro seu cartão em alguns dias úteis.");
     } catch (e) {
       flash(setErro, e.message || "Não foi possível concluir o cancelamento. Tente novamente ou fale com o suporte.");
     }

@@ -16,6 +16,15 @@ if (!getApps().length) {
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const db = getFirestore();
 
+// A Stripe passou a expor current_period_end dentro de items.data[] em vez do nível
+// raiz da assinatura em versões mais recentes da API — tenta os dois formatos.
+function getCurrentPeriodEnd(subscription) {
+  if (subscription && subscription.current_period_end) return subscription.current_period_end;
+  const item = subscription && subscription.items && subscription.items.data && subscription.items.data[0];
+  return (item && item.current_period_end) || null;
+}
+
+
 function readBody(req) {
   return new Promise((resolve) => {
     let raw = '';
@@ -56,9 +65,10 @@ module.exports = async (req, res) => {
       cancel_at_period_end: cancelAtPeriodEnd,
     });
 
+    const periodEnd = getCurrentPeriodEnd(subscription);
     await ref.set({
       canceladoNoFimDoPeriodo: cancelAtPeriodEnd,
-      renovacaoEm: subscription.current_period_end ? subscription.current_period_end * 1000 : (d.renovacaoEm || null),
+      renovacaoEm: periodEnd ? periodEnd * 1000 : (d.renovacaoEm || null),
     }, { merge: true });
 
     return res.status(200).json({ ok: true, canceladoNoFimDoPeriodo: cancelAtPeriodEnd });

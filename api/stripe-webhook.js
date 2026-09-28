@@ -15,6 +15,15 @@ if (!getApps().length) {
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const db = getFirestore();
 
+// A Stripe passou a expor current_period_end dentro de items.data[] em vez do nível
+// raiz da assinatura em versões mais recentes da API — tenta os dois formatos.
+function getCurrentPeriodEnd(subscription) {
+  if (subscription && subscription.current_period_end) return subscription.current_period_end;
+  const item = subscription && subscription.items && subscription.items.data && subscription.items.data[0];
+  return (item && item.current_period_end) || null;
+}
+
+
 function buffer(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -56,8 +65,9 @@ module.exports = async (req, res) => {
           if (session.subscription) {
             try {
               const subscription = await stripe.subscriptions.retrieve(session.subscription);
-              if (subscription.current_period_end) {
-                dadosPlano.renovacaoEm = subscription.current_period_end * 1000;
+              const periodEnd = getCurrentPeriodEnd(subscription);
+              if (periodEnd) {
+                dadosPlano.renovacaoEm = periodEnd * 1000;
               }
             } catch (e) {
               console.error('Não foi possível buscar a assinatura para pegar a data de renovação:', e.message);
@@ -72,9 +82,10 @@ module.exports = async (req, res) => {
         const uid = sub.metadata?.uid;
         if (uid) {
           const ativo = sub.status === 'active' || sub.status === 'trialing';
+          const periodEndUpdated = getCurrentPeriodEnd(sub);
           await db.collection('usuarios').doc(uid).set({
             plano: ativo ? 'pro' : 'free',
-            renovacaoEm: ativo && sub.current_period_end ? sub.current_period_end * 1000 : null,
+            renovacaoEm: ativo && periodEndUpdated ? periodEndUpdated * 1000 : null,
             canceladoNoFimDoPeriodo: ativo ? !!sub.cancel_at_period_end : false,
           }, { merge: true });
         }

@@ -459,6 +459,7 @@ export default function App() {
           setRendasPorMes({});
           setExtrasReceita([]);
           setCartoes([]);
+          setMostrarFeedback(false);
           try {
             let snap = await getDoc(doc(db,"usuarios",u.uid));
             for (let tentativa=0; tentativa<3 && !snap.exists(); tentativa++) {

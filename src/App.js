@@ -892,7 +892,10 @@ export default function App() {
         C={C} onVoltar={()=>setTelaEspecial(null)} abaInicial={abaConta}
         dadosApp={{ parcelas, fixos, extras, rendasPorMes, extrasReceita, cartoes, categorias, saudeConfig }}
         planoAtivo={planoAtivo} trialAtivo={trialAtivo} diasTrialRestantes={diasTrialRestantes}
-        onPlanoAtualizado={setPlanoDb}
+        onPlanoAtualizado={(novoPlano, opts)=>{
+          setPlanoDb(novoPlano);
+          if (opts?.trialUsadoAnteriormente) setTrialUsadoAnteriormente(true);
+        }}
       />
     </div>
   );
@@ -966,7 +969,7 @@ export default function App() {
 
       {guiaAtivo && (
         <GuiaTela C={C} tipo={guiaAtivo}
-          onFechar={()=>setGuiaAtivo(null)}
+          onFechar={()=>marcarGuiaVisto(guiaAtivo)}
           onNaoMostrar={()=>marcarGuiaVisto(guiaAtivo)}/>
       )}
 

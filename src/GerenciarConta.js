@@ -189,7 +189,7 @@ export default function GerenciarConta({ C, onVoltar, dadosApp, abaInicial, plan
       setRenovacaoEm(null);
       setAssinouEm(null);
       setConfirmReembolso(false);
-      if (onPlanoAtualizado) onPlanoAtualizado("free");
+      if (onPlanoAtualizado) onPlanoAtualizado("free", { trialUsadoAnteriormente: true });
       flash(setMsg, "Assinatura cancelada e reembolso confirmado. O valor volta pro seu cartão em alguns dias úteis.");
     } catch (e) {
       flash(setErro, e.message || "Não foi possível concluir o cancelamento. Tente novamente ou fale com o suporte.");

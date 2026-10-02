@@ -35,6 +35,14 @@ const CORES_LIGHT = {
 
 const fmt = (v) => Number(v).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
 const getNow = () => new Date();
+// Evita o bug de "new Date('YYYY-MM-DD')" interpretar a data como meia-noite UTC,
+// o que no fuso do Brasil (UTC-3) volta pro dia anterior — crítico no dia 1º do mês,
+// pois empurra a data pro mês errado (parcelas contando errado).
+const parseDataLocalISO = (str) => {
+  if (!str) return new Date().toISOString();
+  const [ano, mes, dia] = str.split("-").map(Number);
+  return new Date(ano, mes-1, dia).toISOString();
+};
 
 const gerarMeses = () => {
   const now = getNow();
@@ -821,7 +829,7 @@ export default function App() {
     if(!total || total<=0) return;
     const valorParcela = Math.floor((total/n)*100)/100;
     // Se a pessoa mudou a data no formulário, usa a nova; senão mantém a data de cadastro original
-    const novaDataCadastro = editandoParcela.dataInicio ? new Date(editandoParcela.dataInicio).toISOString() : editandoParcela.dataCadastro;
+    const novaDataCadastro = editandoParcela.dataInicio ? parseDataLocalISO(editandoParcela.dataInicio) : editandoParcela.dataCadastro;
     const eh_novo = !parcelas.some(x=>x.id===editandoParcela.id);
     if(eh_novo && !podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
     setParcelas(p=>p.map(x=>x.id===editandoParcela.id?{...editandoParcela,valor:valorParcela,valorTotalOriginal:total,parcelas:n,parcelasOriginal:n,dataCadastro:novaDataCadastro}:x));
@@ -1211,7 +1219,7 @@ export default function App() {
                     if(!novaParc.nome||!novaParc.grupo) return;
                     if(!total || total<=0){ return; }
                     if(!n || n<1 || !Number.isInteger(n)){ return; }
-                    const dataInicio = novaParc.dataInicio ? new Date(novaParc.dataInicio).toISOString() : new Date().toISOString();
+                    const dataInicio = parseDataLocalISO(novaParc.dataInicio);
                     if(!podeAdicionar(planoAtualObj,"parcelas",parcelas.length)){ setShowUpgrade("parcelas"); return; }
                     const valorParcela = Math.floor((total/n)*100)/100;
                     setParcelas(p=>[...p,{

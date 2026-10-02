@@ -79,9 +79,16 @@ export default function GastosDoMes({
       setFixos(f=>[...f, { nome:novoItem.nome, valor:parseFloat(novoItem.valor), cartao:novoItem.cartao, categoria:novoItem.categoria, id:Date.now() }]);
     } else {
       if (podeAdicionar && !podeAdicionar(planoAtualObj, "extras", extrasMes.length)) { onLimiteAtingido && onLimiteAtingido(); return; }
+      // Se for o "mês atual" (mesSel 0), usa a data real de agora em vez do array MESES
+      // (calculado uma única vez quando a página carrega — se a aba ficar aberta de
+      // um dia pro outro sem recarregar, esse array fica desatualizado e o gasto
+      // seria salvo com o mês errado, ficando "perdido" depois do próximo refresh).
+      const hoje = new Date();
+      const mesRealAlvo = mesSel === 0 ? hoje.getMonth() : mesAtual.mes;
+      const anoRealAlvo = mesSel === 0 ? hoje.getFullYear() : mesAtual.ano;
       setExtras(e=>[...e, {
         nome:novoItem.nome, valor:parseFloat(novoItem.valor), cartao:novoItem.cartao, categoria:novoItem.categoria, data:novoItem.data,
-        id:Date.now(), mesReal:mesAtual.mes, anoReal:mesAtual.ano
+        id:Date.now(), mesReal:mesRealAlvo, anoReal:anoRealAlvo
       }]);
     }
     setNovoItem({ nome:"", valor:"", cartao:"", categoria:"", data:"" });

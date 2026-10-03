@@ -282,7 +282,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showEditar, setShowEditar] = useState(false);
   const [showNovaParcela, setShowNovaParcela] = useState(false);
-  const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valorTotal:"", parcelas:"", dataInicio:"" });
+  const [novaParc, setNovaParc] = useState({ grupo:"", nome:"", valorTotal:"", parcelas:"", dataInicio:"", categoria:"" });
   const [novoExtra, setNovoExtra] = useState({ nome:"", valor:"", mes:0, cartao:"" });
   const [expandidosProj, setExpandidosProj] = useState({});
   const [expandidosCartMes, setExpandidosCartMes] = useState({});
@@ -609,16 +609,24 @@ export default function App() {
 
     setSaveStatus("saving");
     try {
-      const payload = {
+      const payloadBruto = {
         parcelas:parc, fixos:fix, extras:ext, rendasPorMes:rendasM,
         extrasReceita:extRec, cartoes:carts, categorias:categorias, saudeConfig:saudeConfig,
         ...(prefs !== undefined ? { preferencias:prefs } : {})
       };
+      // Remove qualquer "undefined" (ex: campo opcional nunca preenchido) antes de
+      // gravar — um único campo undefined em qualquer lugar do documento faz o
+      // Firestore rejeitar a escrita INTEIRA, silenciosamente, sem chegar a sair
+      // nenhuma requisição de rede.
+      const payload = JSON.parse(JSON.stringify(payloadBruto));
       await setDoc(doc(db,"usuarios",auth.currentUser.uid), payload, { merge:true });
       // Backup automático: mantém uma cópia versionada a cada salvamento, independente do plano do Firebase
       setDoc(doc(db,"usuarios",auth.currentUser.uid,"backups",new Date().toISOString()), payload).catch(()=>{});
       setSaveStatus("saved");
-    } catch { setSaveStatus("error"); }
+    } catch(e) {
+      registrarErro(e, { origem: 'handleSave' });
+      setSaveStatus("error");
+    }
     setTimeout(()=>setSaveStatus("idle"),3000);
   },[modoSeguranca]);
 

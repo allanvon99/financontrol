@@ -44,7 +44,7 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == userId;
 
       match /backups/{backupId} {
-        allow read, create: if request.auth != null && request.auth.uid == userId;
+        allow read, create, delete: if request.auth != null && request.auth.uid == userId;
       }
     }
 

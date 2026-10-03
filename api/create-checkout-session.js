@@ -29,7 +29,10 @@ module.exports = async (req, res) => {
     const uid = decoded.uid;
     const email = decoded.email;
 
-    const origin = req.headers.origin || 'https://vonfinance.vercel.app';
+    // Nunca confia no header Origin da requisição pra montar a URL de retorno —
+    // um cliente malicioso poderia manipular isso pra redirecionar o usuário pra
+    // outro domínio depois do pagamento. Usa sempre o domínio fixo de produção.
+    const origin = 'https://vonfinance.vercel.app';
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',

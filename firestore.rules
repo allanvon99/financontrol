@@ -31,10 +31,14 @@ service cloud.firestore {
       // Update: mantém a proteção original (ninguém edita o próprio plano/trial depois de
       // criado) e adiciona a camada 4 — bloqueia se 2+ categorias financeiras forem
       // esvaziadas na mesma escrita (assinatura de bug de carregamento, não de uso normal).
+      // Os campos de assinatura/trial abaixo só devem mudar via backend (Admin SDK,
+      // que ignora estas regras) — nunca direto pelo cliente.
       allow update: if request.auth != null
         && request.auth.uid == userId
         && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(['plano','planoExpiraEm','assinaturaId','trialFim','criadoEm'])
+             .hasAny(['plano','planoExpiraEm','assinaturaId','trialFim','criadoEm',
+                      'trialUsadoAnteriormente','assinouEm','renovacaoEm',
+                      'canceladoNoFimDoPeriodo','reembolsoRealizadoEm'])
         && quantasCategoriasEsvaziaram(resource.data, request.resource.data) < 2;
 
       allow delete: if request.auth != null && request.auth.uid == userId;
@@ -42,6 +46,16 @@ service cloud.firestore {
       match /backups/{backupId} {
         allow read, create: if request.auth != null && request.auth.uid == userId;
       }
+    }
+
+    // Anti-fraude de trial: registro imutável por e-mail que sobrevive à exclusão da
+    // conta, pra impedir apagar-e-recriar-conta pra ganhar trial de novo.
+    match /trialsUsados/{emailKey} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['primeiraCriacao']);
+      allow update, delete: if false;
     }
 
     match /config/{doc} {
